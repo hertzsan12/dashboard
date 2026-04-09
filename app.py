@@ -20,11 +20,7 @@ MAX_STOCK_THRESHOLD = 20  # Example max stock threshold (can be adjusted or read
 
 # ---------- Authentication ----------
 def ensure_workbook(file, headers):
-    if not os.path.exists(file):
-        wb = Workbook()
-        ws = wb.active
-        ws.append(headers)
-        wb.save(file)
+    return  # Disable file creation in cloud
 
 def load_user_credentials():
     ensure_workbook(CREDENTIALS_FILE, ['Username', 'Password', 'Role'])
