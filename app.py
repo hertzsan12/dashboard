@@ -5,6 +5,9 @@ import os
 import hashlib
 from openpyxl import Workbook, load_workbook
 
+st.title("TEST APP LOADED")
+st.write("App started successfully")
+
 # ---------- File Paths ----------
 BASE_DIR = r"C:\Streamlit"
 TRANSACTIONS_FILE = os.path.join(BASE_DIR, 'transactions_log.xlsx')
@@ -135,9 +138,8 @@ def force_rerun():
 
 st.set_page_config(page_title="Plant Inventory Monitoring", layout="wide")
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.username = ""
+st.session_state.authenticated = True
+st.session_state.username = "admin"
 
 if not st.session_state.authenticated:
     st.title("Login")
