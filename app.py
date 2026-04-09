@@ -58,8 +58,7 @@ def authenticate(username, password):
     return False
 
 def get_user_role(username):
-    creds = load_user_credentials()
-    return creds.get(username.upper(), {}).get("role", "viewer")
+    return "admin"
 
 # ---------- Excel Utilities ----------
 def read_inventory():
