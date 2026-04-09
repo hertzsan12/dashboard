@@ -9,7 +9,7 @@ st.title("TEST APP LOADED")
 st.write("App started successfully")
 
 # ---------- File Paths ----------
-BASE_DIR = r"C:\Streamlit"
+BASE_DIR = "."
 TRANSACTIONS_FILE = os.path.join(BASE_DIR, 'transactions_log.xlsx')
 EQUIPMENT_FILE = os.path.join(BASE_DIR, 'equipment_stock.xlsx')
 AUDIT_FILE = os.path.join(BASE_DIR, 'registration_audit.xlsx')
