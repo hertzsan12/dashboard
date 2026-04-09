@@ -191,7 +191,7 @@ else:
     user_role = get_user_role(username)
     is_admin = (user_role == "admin")
 
-    st.sidebar.title("Navigation")
+    st.sidebar.title("David Hertz Monitoring")
     choice = st.sidebar.radio("Go to", ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions", "Logout"])
 
     if choice == "Logout":
