@@ -7,8 +7,11 @@ st.set_page_config(page_title="Shutdown Dashboard", layout="wide")
 # LOAD DATA
 df = pd.read_excel("data.xlsx")
 
-# Clean column names
+# Clean column names VERY safely
 df.columns = df.columns.str.strip().str.lower()
+
+# Show columns for debugging
+st.write("Columns in file:", df.columns.tolist())
 
 # Debug: show column names
 st.write("Columns:", df.columns)
@@ -54,9 +57,9 @@ st.title("⚡ Shutdown Monitoring Dashboard")
 # 🔢 KPI CARDS
 # =========================
 total = len(filtered_df)
-completed = len(filtered_df[filtered_df["Status"] == "Completed"])
-in_progress = len(filtered_df[filtered_df["Status"] == "In Progress"])
-scheduled = len(filtered_df[filtered_df["Status"] == "Scheduled"])
+completed = len(filtered_df[filtered_df["status"] == "Completed"])
+in_progress = len(filtered_df[filtered_df["status"] == "In Progress"])
+scheduled = len(filtered_df[filtered_df["status"] == "Scheduled"])
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -70,7 +73,7 @@ col4.metric("Scheduled", scheduled)
 # =========================
 st.subheader("Shutdown Status Overview")
 
-status_counts = filtered_df["Status"].value_counts()
+status_counts = filtered_df["status"].value_counts()
 st.bar_chart(status_counts)
 
 # =========================
