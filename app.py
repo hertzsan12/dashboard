@@ -5,9 +5,6 @@ import os
 import hashlib
 from openpyxl import Workbook, load_workbook
 
-st.title("TEST APP LOADED")
-st.write("App started successfully")
-
 # ---------- File Paths ----------
 BASE_DIR = "."
 TRANSACTIONS_FILE = os.path.join(BASE_DIR, 'transactions_log.xlsx')
