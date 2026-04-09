@@ -76,57 +76,73 @@ def read_inventory():
             uoms[item] = uom
     return inventory, uoms
 
+# =========================
+# SAFE WORKBOOK LOADER
+# =========================
+def safe_load_workbook(file):
+    try:
+        return load_workbook(file)
+    except Exception as e:
+        st.error(f"Error loading {file}: {e}")
+        return None
+
+
+# =========================
+# READ EQUIPMENT ITEMS
+# =========================
 def read_equipment_items():
-    ensure_workbook(EQUIPMENT_FILE, ['Timestamp', 'Equipment', 'Item', 'Qty', 'UOM'])
-    wb = load_workbook(EQUIPMENT_FILE)
+    wb = safe_load_workbook(EQUIPMENT_FILE)
+    if wb is None:
+        return {}
+
     ws = wb.active
     equipment_dict = {}
+
     for row in ws.iter_rows(min_row=2, values_only=True):
-        eq, item, qty = row[1], row[2], row[3]
-        uom = row[4] if len(row) > 4 and row[4] else "pcs"
-        if not eq or item is None:
+        if not row:
             continue
+
+        eq = row[1] if len(row) > 1 else None
+        item = row[2] if len(row) > 2 else None
+        qty = row[3] if len(row) > 3 else 0
+        uom = row[4] if len(row) > 4 and row[4] else "pcs"
+
+        if not eq or not item:
+            continue
+
         qty = int(qty) if isinstance(qty, int) else 0
-        equipment_dict.setdefault(eq, {}).setdefault(item, {'qty': 0, 'uom': uom})
-        equipment_dict[eq][item]['qty'] += qty
-        equipment_dict[eq][item]['uom'] = uom
+
+        if eq not in equipment_dict:
+            equipment_dict[eq] = {}
+
+        if item not in equipment_dict[eq]:
+            equipment_dict[eq][item] = {"qty": 0, "uom": uom}
+
+        equipment_dict[eq][item]["qty"] += qty
+        equipment_dict[eq][item]["uom"] = uom
+
     return equipment_dict
 
+
+# =========================
+# WRITE EQUIPMENT ITEMS (DISABLED)
+# =========================
 def write_equipment_items(equipment_dict):
-    wb = Workbook()
-    ws = wb.active
-    ws.append(['Timestamp', 'Equipment', 'Item', 'Qty', 'UOM'])
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    for eq, items in equipment_dict.items():
-        for item, data in items.items():
-            ws.append([timestamp, eq, item, data['qty'], data['uom']])
-    wb.save(EQUIPMENT_FILE)
+    st.warning("⚠️ Write operation disabled in cloud version")
 
+
+# =========================
+# APPEND EQUIPMENT STOCK (DISABLED)
+# =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
-    ensure_workbook(EQUIPMENT_FILE, ['Timestamp', 'Equipment', 'Item', 'Qty', 'UOM'])
-    wb = load_workbook(EQUIPMENT_FILE)
-    ws = wb.active
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    ws.append([timestamp, equipment, item, qty, uom])
-    wb.save(EQUIPMENT_FILE)
+    st.warning("⚠️ Append operation disabled in cloud version")
 
+
+# =========================
+# LOG TRANSACTION (DISABLED)
+# =========================
 def log_transaction(action, item, quantity, person, mdr_number=None, equipment=None, uom="pcs"):
-    ensure_workbook(TRANSACTIONS_FILE, ['Timestamp', 'Action', 'Item', 'Qty', 'UOM', 'Person', 'MDR No.', 'Equipment'])
-    wb = load_workbook(TRANSACTIONS_FILE)
-    ws = wb.active
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    qty_to_log = -quantity if action == "withdraw" else quantity
-    ws.append([
-        timestamp,
-        action,
-        item,
-        qty_to_log,
-        uom,
-        person,
-        mdr_number if action == "deliver" else "",  # ✅ fix: was "delivery", should be "deliver"
-        equipment
-    ])
-    wb.save(TRANSACTIONS_FILE)
+    st.warning("⚠️ Transaction logging disabled in cloud version")
 # ---------- Streamlit App ----------
 def force_rerun():
     st.session_state['rerun_counter'] = st.session_state.get('rerun_counter', 0) + 1
