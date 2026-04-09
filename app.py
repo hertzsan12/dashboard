@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
-import bcrypt
+import hashlib
 from openpyxl import Workbook, load_workbook
 
 # ---------- File Paths ----------
@@ -31,15 +31,14 @@ def load_user_credentials():
     for row in ws.iter_rows(min_row=2, values_only=True):
         username, password_hash, role = row
         if username and password_hash:
-            password_hash_bytes = password_hash.encode() if isinstance(password_hash, str) else password_hash
-            credentials[username.upper()] = {"password": password_hash_bytes, "role": role}
+            credentials[username.upper()] = {"password": password_hash, "role": role}
     return credentials
 
 def save_user_credentials(username, password, role="viewer"):
     ensure_workbook(CREDENTIALS_FILE, ['Username', 'Password', 'Role'])
     wb = load_workbook(CREDENTIALS_FILE)
     ws = wb.active
-    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    hashed_pw = hashlib.sha256(password.encode()).hexdigest()
     ws.append([username.upper(), hashed_pw, role])
     wb.save(CREDENTIALS_FILE)
 
@@ -56,7 +55,7 @@ def authenticate(username, password):
     creds = load_user_credentials()
     user = creds.get(username.upper())
     if user:
-        return bcrypt.checkpw(password.encode(), user["password"])
+        return hashlib.sha256(password.encode()).hexdigest() == user["password"]
     return False
 
 def get_user_role(username):
