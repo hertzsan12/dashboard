@@ -62,18 +62,33 @@ def get_user_role(username):
 
 # ---------- Excel Utilities ----------
 def read_inventory():
-    ensure_workbook(EQUIPMENT_FILE, ['Timestamp', 'Equipment', 'Item', 'Qty', 'UOM'])
-    wb = load_workbook(EQUIPMENT_FILE)
+    wb = safe_load_workbook(EQUIPMENT_FILE)
+    if wb is None:
+        return {}, {}
+
     ws = wb.active
     inventory = {}
     uoms = {}
+
     for row in ws.iter_rows(min_row=2, values_only=True):
-        if row and row[2] and row[3] is not None:
-            item = row[2]
-            qty = int(row[3]) if isinstance(row[3], int) else 0
-            uom = row[4] if len(row) > 4 and row[4] else "pcs"
-            inventory[item] = inventory.get(item, 0) + qty
-            uoms[item] = uom
+        if not row:
+            continue
+
+        item = row[2] if len(row) > 2 else None
+        qty = row[3] if len(row) > 3 else 0
+        uom = row[4] if len(row) > 4 and row[4] else "pcs"
+
+        if not item:
+            continue
+
+        qty = int(qty) if isinstance(qty, int) else 0
+
+        if item not in inventory:
+            inventory[item] = 0
+
+        inventory[item] += qty
+        uoms[item] = uom
+
     return inventory, uoms
 
 # =========================
