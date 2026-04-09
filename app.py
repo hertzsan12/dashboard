@@ -7,8 +7,11 @@ st.set_page_config(page_title="Shutdown Dashboard", layout="wide")
 # LOAD DATA
 df = pd.read_excel("data.xlsx")
 
-# CLEAN COLUMN NAMES (important if spaces exist)
-df.columns = df.columns.str.strip()
+# Clean column names
+df.columns = df.columns.str.strip().str.lower()
+
+# Debug: show column names
+st.write("Columns:", df.columns)
 
 # SIDEBAR FILTER
 st.sidebar.title("Filters")
