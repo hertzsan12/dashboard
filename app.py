@@ -164,8 +164,6 @@ st.set_page_config(page_title="Plant Inventory Monitoring", layout="wide")
 st.session_state.authenticated = True
 st.session_state.username = "admin"
 
-st.write("Before auth check")
-
 if not st.session_state.authenticated:
     st.title("Login")
     username = st.text_input("Username")
