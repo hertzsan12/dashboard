@@ -80,6 +80,8 @@ def read_inventory():
 
     sheet = client.open_by_key("1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("transactions_log")
 
+    st.success("Connected to Google Sheets!")
+    
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
