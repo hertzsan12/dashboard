@@ -429,19 +429,21 @@ else:
 
         data = sheet.get_all_values()
 
-        if len(data) > 1:
-            df_log = pd.DataFrame(data[1:], columns=data[0])
+        if data:
+            headers = data[0]
+            rows = data[1:]
+
+            df_log = pd.DataFrame(rows, columns=headers)
         else:
-            df_log = pd.DataFrame(columns=data[0] if data else [])
+            df_log = pd.DataFrame()
 
         if not df_log.empty:
-            df_log.columns = df_log.columns.str.strip().str.title()
+            df_log.columns = df_log.columns.str.strip()
 
-            if "Timestamp" in df_log.columns:
+            if "Timestamp" in df_log.columns and not df_log.empty:
                 df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
                 df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
 
                 st.dataframe(df_log.head(30), use_container_width=True)
             else:
-                st.error("⚠️ 'Timestamp' column not found")
-                st.write("Columns found:", df_log.columns)
+                st.warning("No transaction data yet.")
