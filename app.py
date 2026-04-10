@@ -84,7 +84,7 @@ def read_inventory():
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
-    st.write(st.secrets["gcp_credentials"]["client_email"])
+    st.write("APP USING:", st.secrets["gcp_credentials"]["client_email"])
 
     return {}, {}
 
