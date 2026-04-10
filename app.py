@@ -162,7 +162,22 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 # LOG TRANSACTION (DISABLED)
 # =========================
 def log_transaction(action, item, quantity, person, mdr_number=None, equipment=None, uom="pcs"):
-    st.warning("⚠️ Transaction logging disabled in cloud version")
+    client = connect_gsheet()
+    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("transactions_log")
+
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    qty_to_log = -quantity if action == "withdraw" else quantity
+
+    sheet.append_row([
+        timestamp,
+        action,
+        item,
+        qty_to_log,
+        uom,
+        person,
+        mdr_number if action == "deliver" else "",
+        equipment
+    ])
 # ---------- Streamlit App ----------
 def force_rerun():
     st.session_state['rerun_counter'] = st.session_state.get('rerun_counter', 0) + 1
@@ -399,41 +414,26 @@ else:
                             st.success(f"{action} successful.")
                             force_rerun()
 
-    elif choice == "Transactions":
-        st.title("Transaction Log")
-        ensure_workbook(TRANSACTIONS_FILE, ['Timestamp', 'Action', 'Item', 'Qty', 'UOM', 'Person', 'MDR No.',      'Equipment'])
-        wb = load_workbook(TRANSACTIONS_FILE)
-        ws = wb.active
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
-        if rows:
-            df_log = pd.DataFrame(rows, columns=['Timestamp', 'Action', 'Item', 'Qty', 'UOM', 'Person', 'MDR No.', 'Equipment'])
-            df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])  # convert to datetime
-            df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
-            st.dataframe(df_log.head(30), use_container_width=True)
+elif choice == "Transactions":
+    st.title("Transaction Log")
 
-        if is_admin and not df_log.empty:
+    client = connect_gsheet()
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
+    ).worksheet("transactions_log")
+
+    data = sheet.get_all_records()
+    df_log = pd.DataFrame(data)
+
+    if not df_log.empty:
+        df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
+        df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
+
+        st.dataframe(df_log.head(30), use_container_width=True)
+
+        # 🔥 Undo Feature (Optional - basic)
+        if is_admin:
             if st.button("Undo Last Transaction"):
-                last_row = df_log.iloc[0]
-                action = last_row['Action'].lower()
-                item = last_row['Item']
-                qty = int(last_row['Qty'])
-                equipment = last_row['Equipment']
-                inventory, _ = read_inventory()
-                equipment_items = read_equipment_items()
-
-                if equipment in equipment_items and item in equipment_items[equipment]:
-                    if action == "withdraw":
-                        equipment_items[equipment][item]['qty'] += abs(qty)
-                    elif action == "deliver":
-                        equipment_items[equipment][item]['qty'] -= abs(qty)
-
-                    write_equipment_items(equipment_items)
-
-                    # Remove from log
-                    df_log = df_log.iloc[1:]
-                    df_log.to_excel(TRANSACTIONS_FILE, index=False)
-
-                    st.success("Last transaction undone.")
-                    force_rerun()
-        else:
-            st.info("No transactions logged yet.")
+                st.warning("Undo feature not supported in Google Sheets version yet.")
+    else:
+        st.info("No transactions logged yet.")
