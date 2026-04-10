@@ -448,27 +448,24 @@ else:
         st.title("Transaction Log")
 
         client = connect_gsheet()
-        sheet = client.open_by_url(
-            "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
-        ).worksheet("transactions_log")
+        sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("transactions_log")
 
+        # 🔥 ALWAYS get latest data
         data = sheet.get_all_values()
 
-        if data:
+        if len(data) > 1:
             headers = data[0]
             rows = data[1:]
 
             df_log = pd.DataFrame(rows, columns=headers)
-        else:
-            df_log = pd.DataFrame()
 
-        if not df_log.empty:
             df_log.columns = df_log.columns.str.strip()
 
-            if "Timestamp" in df_log.columns and not df_log.empty:
+            if "Timestamp" in df_log.columns:
                 df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
                 df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
 
-                st.dataframe(df_log.head(30), use_container_width=True)
-            else:
-                st.warning("No transaction data yet.")
+            st.dataframe(df_log, use_container_width=True)
+
+        else:
+            st.info("No transactions logged yet.")
