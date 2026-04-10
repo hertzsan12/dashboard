@@ -168,7 +168,8 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 # =========================
 def log_transaction(action, item, quantity, person, mdr_number=None, equipment=None, uom="pcs"):
     client = connect_gsheet()
-    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("transactions_log")
+
+    sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("transactions_log")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     qty_to_log = -quantity if action == "withdraw" else quantity
@@ -183,6 +184,26 @@ def log_transaction(action, item, quantity, person, mdr_number=None, equipment=N
         mdr_number if action == "deliver" else "",
         equipment
     ])
+
+    st.success("✅ Transaction saved to Google Sheets!")
+
+# ---------- Google Sheets Functions ----------
+
+def update_equipment_stock(equipment, item, qty, uom):
+    client = connect_gsheet()
+
+    sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("equipment_stock")
+
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    sheet.append_row([
+        timestamp,
+        equipment,
+        item,
+        qty,
+        uom
+    ])
+    
 # ---------- Streamlit App ----------
 def force_rerun():
     st.session_state['rerun_counter'] = st.session_state.get('rerun_counter', 0) + 1
@@ -402,8 +423,10 @@ else:
                             else:
                                 items[item_selected]['qty'] += qty
 
-                            # Update Excel
-                            write_equipment_items(equipment_items)
+                            if action == "Withdraw":
+                                update_equipment_stock(equipment_selected, item_selected, -qty, uom)
+                            else:
+                                update_equipment_stock(equipment_selected, item_selected, qty, uom)
 
                             # Log the transaction
                             log_transaction(
