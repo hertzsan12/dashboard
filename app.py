@@ -414,26 +414,26 @@ else:
                             st.success(f"{action} successful.")
                             force_rerun()
 
-elif choice == "Transactions":
-    st.title("Transaction Log")
+    elif choice == "Transactions":
+        st.title("Transaction Log")
 
-    client = connect_gsheet()
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
-    ).worksheet("transactions_log")
+        client = connect_gsheet()
+        sheet = client.open_by_url(
+            "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
+        ).worksheet("transactions_log")
 
-    data = sheet.get_all_records()
-    df_log = pd.DataFrame(data)
+        data = sheet.get_all_records()
+        df_log = pd.DataFrame(data)
 
-    if not df_log.empty:
-        df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
-        df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
+        if not df_log.empty:
+            df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
+            df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
 
-        st.dataframe(df_log.head(30), use_container_width=True)
+            st.dataframe(df_log.head(30), use_container_width=True)
 
-        # 🔥 Undo Feature (Optional - basic)
-        if is_admin:
-            if st.button("Undo Last Transaction"):
-                st.warning("Undo feature not supported in Google Sheets version yet.")
-    else:
-        st.info("No transactions logged yet.")
+            # 🔥 Undo Feature (Optional - basic)
+            if is_admin:
+                if st.button("Undo Last Transaction"):
+                    st.warning("Undo feature not supported in Google Sheets version yet.")
+        else:
+            st.info("No transactions logged yet.")
