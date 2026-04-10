@@ -427,8 +427,12 @@ else:
             "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
         ).worksheet("transactions_log")
 
-        data = sheet.get_all_records()
-        df_log = pd.DataFrame(data)
+        data = sheet.get_all_values()
+
+        if len(data) > 1:
+            df_log = pd.DataFrame(data[1:], columns=data[0])
+        else:
+            df_log = pd.DataFrame(columns=data[0] if data else [])
 
         if not df_log.empty:
             df_log.columns = df_log.columns.str.strip().str.title()
