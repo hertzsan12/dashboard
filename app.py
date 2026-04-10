@@ -74,7 +74,6 @@ def get_user_role(username):
 
 # ---------- Excel Utilities ----------
 def read_inventory():
-    st.write("APP USING:", st.secrets["gcp_credentials"]["client_email"])
 
     client = connect_gsheet()
     
