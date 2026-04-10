@@ -75,7 +75,7 @@ def get_user_role(username):
 # ---------- Excel Utilities ----------
 def read_inventory():
     client = connect_gsheet()
-    sheet = client.open("inventory_db").worksheet("equipment_stock")
+    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("equipment_stock")
 
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
