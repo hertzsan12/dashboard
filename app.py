@@ -431,7 +431,7 @@ else:
         df_log = pd.DataFrame(data)
 
         if not df_log.empty:
-            df_log.columns = df_log.columns.str.strip()  # 🔥 remove spaces
+            df_log.columns = df_log.columns.str.strip().str.title()
 
             if "Timestamp" in df_log.columns:
                 df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
@@ -439,8 +439,5 @@ else:
 
                 st.dataframe(df_log.head(30), use_container_width=True)
             else:
-                st.error("⚠️ 'Timestamp' column not found in sheet")
+                st.error("⚠️ 'Timestamp' column not found")
                 st.write("Columns found:", df_log.columns)
-        else:
-            st.info("No transactions logged yet.")
-
