@@ -78,14 +78,15 @@ def read_inventory():
 
     client = connect_gsheet()
 
-    sheet = client.open_by_key("1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("transactions_log")
+    sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("equipment_stock")
 
     st.success("Connected to Google Sheets!")
-    
+
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
-    return {}, {}
+    inventory = {}
+    uoms = {}
 
     for _, row in df.iterrows():
         item = row.get("Item")
@@ -99,7 +100,7 @@ def read_inventory():
         uoms[item] = uom
 
     return inventory, uoms
-
+    
 # =========================
 # SAFE WORKBOOK LOADER
 # =========================
