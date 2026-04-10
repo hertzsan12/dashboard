@@ -74,17 +74,16 @@ def get_user_role(username):
 
 # ---------- Excel Utilities ----------
 def read_inventory():
+    st.write("APP USING:", st.secrets["gcp_credentials"]["client_email"])
+
     client = connect_gsheet()
 
-    # 🔁 CHANGE TO THIS
     sheet = client.open_by_url(
         "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
-    ).worksheet("transactions_log")  # 👈 change tab
+    ).worksheet("transactions_log")
 
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
-
-    st.write("APP USING:", st.secrets["gcp_credentials"]["client_email"])
 
     return {}, {}
 
