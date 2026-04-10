@@ -74,6 +74,10 @@ def get_user_role(username):
 
 # ---------- Excel Utilities ----------
 def read_inventory():
+    st.write("APP USING:", st.secrets["gcp_credentials"]["client_email"])
+
+    client = connect_gsheet()
+    
     sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("equipment_stock")
 
     st.success("Connected to Google Sheets!")
