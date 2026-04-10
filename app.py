@@ -75,13 +75,18 @@ def get_user_role(username):
 # ---------- Excel Utilities ----------
 def read_inventory():
     client = connect_gsheet()
-    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("equipment_stock")
+
+    # 🔁 CHANGE TO THIS
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
+    ).worksheet("transactions_log")  # 👈 change tab
 
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
 
-    inventory = {}
-    uoms = {}
+    st.write("DEBUG:", df.head())  # 👈 show data
+
+    return {}, {}
 
     for _, row in df.iterrows():
         item = row.get("Item")
