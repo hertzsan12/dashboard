@@ -431,14 +431,16 @@ else:
         df_log = pd.DataFrame(data)
 
         if not df_log.empty:
-            df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
-            df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
+            df_log.columns = df_log.columns.str.strip()  # 🔥 remove spaces
 
-            st.dataframe(df_log.head(30), use_container_width=True)
+            if "Timestamp" in df_log.columns:
+                df_log['Timestamp'] = pd.to_datetime(df_log['Timestamp'])
+                df_log = df_log.sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
 
-            # 🔥 Undo Feature (Optional - basic)
-            if is_admin:
-                if st.button("Undo Last Transaction"):
-                    st.warning("Undo feature not supported in Google Sheets version yet.")
+                st.dataframe(df_log.head(30), use_container_width=True)
+            else:
+                st.error("⚠️ 'Timestamp' column not found in sheet")
+                st.write("Columns found:", df_log.columns)
         else:
             st.info("No transactions logged yet.")
+
