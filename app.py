@@ -78,9 +78,7 @@ def read_inventory():
 
     client = connect_gsheet()
 
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0"
-    ).worksheet("transactions_log")
+    sheet = client.open_by_key("1vrziHb2pcLS8lunzRIFK0vtXJOGWk5YO5ImtP47s_P0").worksheet("transactions_log")
 
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
