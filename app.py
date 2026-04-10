@@ -4,6 +4,8 @@ import datetime
 import os
 import hashlib
 from openpyxl import Workbook, load_workbook
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # ---------- File Paths ----------
 BASE_DIR = "."
@@ -16,6 +18,19 @@ LOW_STOCK_THRESHOLD = 5
 MAX_STOCK_THRESHOLD = 20  # Example max stock threshold (can be adjusted or read from file)
 
 # ---------- Authentication ----------
+def connect_gsheet():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        st.secrets["gcp_credentials"], scope
+    )
+
+    client = gspread.authorize(creds)
+    return client
+    
 def ensure_workbook(file, headers):
     return  # Disable file creation in cloud
 
@@ -59,31 +74,24 @@ def get_user_role(username):
 
 # ---------- Excel Utilities ----------
 def read_inventory():
-    wb = safe_load_workbook(EQUIPMENT_FILE)
-    if wb is None:
-        return {}, {}
+    client = connect_gsheet()
+    sheet = client.open("inventory_db").worksheet("equipment_stock")
 
-    ws = wb.active
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+
     inventory = {}
     uoms = {}
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row:
-            continue
-
-        item = row[2] if len(row) > 2 else None
-        qty = row[3] if len(row) > 3 else 0
-        uom = row[4] if len(row) > 4 and row[4] else "pcs"
+    for _, row in df.iterrows():
+        item = row.get("Item")
+        qty = int(row.get("Qty", 0))
+        uom = row.get("UOM", "pcs")
 
         if not item:
             continue
 
-        qty = int(qty) if isinstance(qty, int) else 0
-
-        if item not in inventory:
-            inventory[item] = 0
-
-        inventory[item] += qty
+        inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
     return inventory, uoms
