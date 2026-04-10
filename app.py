@@ -428,7 +428,7 @@ else:
                             else:
                                 update_equipment_stock(equipment_selected, item_selected, qty, uom)
 
-                            # Log the transaction
+                            # ✅ Log transaction
                             log_transaction(
                                 action=action.lower(),
                                 item=item_selected,
@@ -440,7 +440,9 @@ else:
                             )
 
                             st.success(f"{action} successful.")
-                            force_rerun()
+
+                            # 🔥 THIS IS THE KEY
+                            st.rerun()
 
     elif choice == "Transactions":
         st.title("Transaction Log")
