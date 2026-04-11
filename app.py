@@ -122,6 +122,7 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
 # =========================
 st.set_page_config(layout="wide")
 
+st.sidebar.title("David Hertz Monitoring")
 menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
 choice = st.sidebar.radio("Go to", menu)
 
