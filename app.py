@@ -300,19 +300,6 @@ else:
         else:
             eq_name = st.text_input("Edit equipment name", value=selected_eq)
 
-        # ✅ SAVE EQUIPMENT NAME
-        if st.button("Save Equipment Name"):
-            if not is_admin:
-                st.warning("Only admins can add equipment.")
-            elif not eq_name.strip():
-                st.warning("Equipment name cannot be empty.")
-            elif is_new and eq_name in equipment_items:
-                st.warning("Equipment already exists.")
-            elif is_new:
-                append_equipment_stock(eq_name, "", 0, "")
-                st.success(f"Equipment '{eq_name}' added.")
-                st.rerun()
-
         # ✅ SHOW ITEMS
         
             items = equipment_items.get(eq_name, {})
