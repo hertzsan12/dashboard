@@ -149,12 +149,6 @@ def read_equipment_items():
 # =========================
 def write_equipment_items(equipment_dict):
     pass
-        if action == "Withdraw":
-        append_equipment_stock(equipment_selected, item_selected, -qty, uom)
-    else:
-        append_equipment_stock(equipment_selected, item_selected, qty, uom)
-
-
 # =========================
 # APPEND EQUIPMENT STOCK (GOOGLE SHEETS)
 # =========================
