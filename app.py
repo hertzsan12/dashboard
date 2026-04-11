@@ -115,38 +115,34 @@ def safe_load_workbook(file):
 # READ EQUIPMENT ITEMS
 # =========================
 def read_equipment_items():
-    wb = safe_load_workbook(EQUIPMENT_FILE)
-    if wb is None:
-        return {}
+    client = connect_gsheet()
+    sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("equipment_stock")
 
-    ws = wb.active
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+
     equipment_dict = {}
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row:
+    for _, row in df.iterrows():
+        eq = row.get("Equipment")
+        item = row.get("Item")
+        qty = int(row.get("Qty", 0))
+        uom = row.get("UOM", "pcs")
+
+        if not eq:
             continue
-
-        eq = row[1] if len(row) > 1 else None
-        item = row[2] if len(row) > 2 else None
-        qty = row[3] if len(row) > 3 else 0
-        uom = row[4] if len(row) > 4 and row[4] else "pcs"
-
-        if not eq or not item:
-            continue
-
-        qty = int(qty) if isinstance(qty, int) else 0
 
         if eq not in equipment_dict:
             equipment_dict[eq] = {}
 
-        if item not in equipment_dict[eq]:
-            equipment_dict[eq][item] = {"qty": 0, "uom": uom}
+        if item:
+            if item not in equipment_dict[eq]:
+                equipment_dict[eq][item] = {"qty": 0, "uom": uom}
 
-        equipment_dict[eq][item]["qty"] += qty
-        equipment_dict[eq][item]["uom"] = uom
+            equipment_dict[eq][item]["qty"] += qty
+            equipment_dict[eq][item]["uom"] = uom
 
     return equipment_dict
-
 
 # =========================
 # WRITE EQUIPMENT ITEMS
@@ -309,29 +305,9 @@ else:
             elif is_new and eq_name in equipment_items:
                 st.warning("Equipment already exists.")
             elif is_new:
-                equipment_items[eq_name] = {}
-                write_equipment_items(equipment_items)
-                st.success(f"Equipment '{eq_name}' added.")
-                force_rerun()
-            elif eq_name != selected_eq:
-                wb = load_workbook(EQUIPMENT_FILE)
-                ws = wb.active
-                for row in ws.iter_rows(min_row=2):
-                    if row[1].value == selected_eq:
-                        row[1].value = eq_name
-                wb.save(EQUIPMENT_FILE)
-                st.success(f"Renamed '{selected_eq}' to '{eq_name}'")
-                force_rerun()
-
-        if not is_new and st.button("Delete Equipment"):
-            if not is_admin:
-                st.warning("Only admins can delete equipment.")
-            else:
-                if eq_name in equipment_items:
-                    del equipment_items[eq_name]
-                    write_equipment_items(equipment_items)
-                    st.success(f"Equipment '{eq_name}' deleted.")
-                    force_rerun()
+                append_equipment_stock(eq_name, "", 0, "")
+                st.success(f"Equipment '{eq_name}' added to cloud.")
+                st.rerun()
 
         if eq_name:
             items = equipment_items.get(eq_name, {})
@@ -362,10 +338,11 @@ else:
                         updated_items[item] = {"qty": qty, "uom": uom}
 
                     # Update the main dictionary and write back to Excel
-                    equipment_items[eq_name] = updated_items
-                    write_equipment_items(equipment_items)
-                    st.success("Equipment items updated successfully.")
-                    force_rerun()
+                    for item, data in updated_items.items():
+                        append_equipment_stock(eq_name, item, data["qty"], data["uom"])
+
+                    st.success("Equipment items saved to Google Sheets.")
+                    st.rerun()
 
     elif choice == "Withdraw/Deliver":
         st.title("Withdraw or Deliver Items")
