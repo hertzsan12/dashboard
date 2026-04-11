@@ -314,7 +314,7 @@ else:
                 st.rerun()
 
         # ✅ SHOW ITEMS
-        if eq_name:
+        
             items = equipment_items.get(eq_name, {})
 
             df_items = pd.DataFrame(
@@ -354,7 +354,7 @@ else:
                     st.success("Equipment items saved successfully.")
                     st.rerun()
 
-        if eq_name:
+        
             items = equipment_items.get(eq_name, {})
             df_items = pd.DataFrame(
                 [{"Item": item, "Quantity": data["qty"], "UOM": data["uom"]} for item, data in items.items()]
