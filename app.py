@@ -10,38 +10,33 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 
 LOW_STOCK_THRESHOLD = 5
-MAX_STOCK_THRESHOLD = 20
 
 # =========================
-# NORMALIZE ITEM NAMES
+# NORMALIZE ITEM
 # =========================
 def normalize_item_name(name):
     if not name:
         return ""
-
     name = name.upper().strip()
     name = name.replace(",", ", ")
     name = " ".join(name.split())
-
     return name
 
 # =========================
-# GOOGLE SHEETS CONNECTION
+# CONNECT GSHEET
 # =========================
 def connect_gsheet():
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-
     creds = ServiceAccountCredentials.from_json_keyfile_dict(
         st.secrets["gcp_credentials"], scope
     )
-
     return gspread.authorize(creds)
 
 # =========================
-# APPEND STOCK (CORE ENGINE)
+# APPEND STOCK
 # =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
     client = connect_gsheet()
@@ -49,21 +44,14 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    sheet.append_row([
-        timestamp,
-        equipment,
-        item,
-        qty,
-        uom
-    ])
+    sheet.append_row([timestamp, equipment, item, qty, uom])
 
 # =========================
-# READ EQUIPMENT ITEMS
+# READ EQUIPMENT
 # =========================
 def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
-
     df = pd.DataFrame(sheet.get_all_records())
 
     equipment_dict = {}
@@ -80,11 +68,6 @@ def read_equipment_items():
         if eq not in equipment_dict:
             equipment_dict[eq] = {}
 
-        # RESET LOGIC
-        if item == "__RESET__":
-            equipment_dict[eq] = {}
-            continue
-
         item = normalize_item_name(item)
 
         if not item:
@@ -98,12 +81,11 @@ def read_equipment_items():
     return equipment_dict
 
 # =========================
-# READ INVENTORY (GLOBAL)
+# READ INVENTORY
 # =========================
 def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
-
     df = pd.DataFrame(sheet.get_all_records())
 
     inventory = {}
@@ -114,7 +96,7 @@ def read_inventory():
         qty = int(row.get("Qty", 0))
         uom = row.get("UOM", "pcs")
 
-        if item == "__RESET__" or not item:
+        if not item:
             continue
 
         inventory[item] = inventory.get(item, 0) + qty
@@ -125,21 +107,14 @@ def read_inventory():
 # =========================
 # LOG TRANSACTION
 # =========================
-def log_transaction(action, item, quantity, person, mdr_number, equipment, uom):
+def log_transaction(action, item, qty, person, mdr, equipment, uom):
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     sheet.append_row([
-        timestamp,
-        action,
-        item,
-        quantity,
-        uom,
-        person,
-        mdr_number,
-        equipment
+        timestamp, action, item, qty, uom, person, mdr, equipment
     ])
 
 # =========================
@@ -147,16 +122,14 @@ def log_transaction(action, item, quantity, person, mdr_number, equipment, uom):
 # =========================
 st.set_page_config(layout="wide")
 
-st.sidebar.title("David Hertz Monitoring")
-choice = st.sidebar.radio("Go to", ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions", "Logout"])
+menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
+choice = st.sidebar.radio("Go to", menu)
 
-
-is_admin = True  # simplify for now
+is_admin = True
 
 # =========================
-# INVENTORY PAGE
+# INVENTORY
 # =========================
-
 if choice == "Inventory":
     st.title("Inventory Overview")
 
@@ -181,69 +154,62 @@ if choice == "Inventory":
             "Status": status
         })
 
-    df = pd.DataFrame(data)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(pd.DataFrame(data), use_container_width=True)
 
 # =========================
-# EQUIPMENT PAGE
+# EQUIPMENT
 # =========================
 elif choice == "Equipment":
     st.title("Equipment Inventory")
 
     equipment_items = read_equipment_items()
     equipment_list = sorted(equipment_items.keys())
-    options = ["-- New Equipment --"] + equipment_list
 
-    selected_eq = st.selectbox("Select Equipment", options)
-    is_new = selected_eq == "-- New Equipment --"
+    eq_name = st.selectbox("Select Equipment", ["-- New --"] + equipment_list)
 
-    eq_name = st.text_input(
-        "Equipment Name",
-        value="" if is_new else selected_eq
-    )
+    if eq_name == "-- New --":
+        eq_name = st.text_input("New Equipment Name")
 
-    if st.button("Save Equipment Name", key="save_eq"):
-        if eq_name.strip():
+        if st.button("Add Equipment"):
             append_equipment_stock(eq_name, "", 0, "")
-            st.success("Equipment saved")
+            st.success("Added")
             st.rerun()
 
     if eq_name:
         items = equipment_items.get(eq_name, {})
 
-        df_items = pd.DataFrame([
+        df = pd.DataFrame([
             {"Item": k, "Quantity": v["qty"], "UOM": v["uom"]}
             for k, v in items.items()
         ])
 
-        df_items = pd.concat([
-            df_items,
-            pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])
-        ], ignore_index=True)
+        df = pd.concat([df, pd.DataFrame([{"Item":"", "Quantity":0, "UOM":"pcs"}])])
 
-        st.markdown("### Edit Item Quantities and UOM")
+        edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
 
-        edited_df = st.data_editor(
-            df_items,
-            num_rows="dynamic",
-            key=f"editor_{eq_name}"
-        )
+        if st.button("Save Equipment Items"):
+            edited = edited.dropna(subset=["Item"])
+            edited = edited[edited["Item"] != ""]
 
-        if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
+            updated = {}
 
-            edited_df = edited_df.dropna(subset=["Item"])
-            edited_df = edited_df[edited_df["Item"] != ""]
-
-            append_equipment_stock(eq_name, "__RESET__", 0, "")
-
-            for _, row in edited_df.iterrows():
+            for _, row in edited.iterrows():
                 item = normalize_item_name(row["Item"])
                 qty = int(row["Quantity"])
                 uom = row["UOM"]
 
-                append_equipment_stock(eq_name, item, qty, uom)
+                updated[item] = {"qty": qty, "uom": uom}
 
-            st.success("Saved!")
+            # 🔥 reverse old
+            old_items = equipment_items.get(eq_name, {})
+            for item, data in old_items.items():
+                append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
+
+            # 🔥 add new
+            for item, data in updated.items():
+                append_equipment_stock(eq_name, item, data["qty"], data["uom"])
+
+            st.success("Updated")
             st.rerun()
 
 # =========================
@@ -253,33 +219,46 @@ elif choice == "Withdraw/Deliver":
     st.title("Withdraw / Deliver")
 
     equipment_items = read_equipment_items()
-    equipment_selected = st.selectbox("Equipment", list(equipment_items.keys()))
+    equipment = st.selectbox("Equipment", list(equipment_items.keys()))
 
-    if equipment_selected:
-        items = equipment_items[equipment_selected]
+    if equipment:
+        items = equipment_items[equipment]
+        item = st.selectbox("Item", list(items.keys()))
 
-        item_selected = st.selectbox("Item", list(items.keys()))
-        uom = items[item_selected]["uom"]
-        current_qty = items[item_selected]["qty"]
+        current_qty = items[item]["qty"]
+        uom = items[item]["uom"]
 
-        st.write(f"Current: {current_qty} {uom}")
+        inventory, _ = read_inventory()
+        total_qty = inventory.get(item, 0)
+
+        st.write(f"Total Stock: {total_qty} {uom}")
+        st.write(f"Equipment Stock: {current_qty} {uom}")
+
+        if current_qty == 0:
+            if total_qty > 0:
+                st.warning("Withdraw from other equipment")
+            else:
+                st.error("Follow up purchase")
 
         action = st.radio("Action", ["Withdraw", "Deliver"])
-        qty = st.number_input("Quantity", min_value=0)
+        qty = st.number_input("Qty", min_value=0)
 
         person = st.text_input("Person")
-        mdr = st.text_input("MDR Number")
+        mdr = st.text_input("MDR")
 
-        if st.button("Submit", key="submit_tx"):
-            if action == "Withdraw":
-                append_equipment_stock(equipment_selected, item_selected, -qty, uom)
+        if st.button("Submit"):
+            if action == "Withdraw" and qty > current_qty:
+                st.error("Cannot withdraw more than available")
             else:
-                append_equipment_stock(equipment_selected, item_selected, qty, uom)
+                if action == "Withdraw":
+                    append_equipment_stock(equipment, item, -qty, uom)
+                else:
+                    append_equipment_stock(equipment, item, qty, uom)
 
-            log_transaction(action, item_selected, qty, person, mdr, equipment_selected, uom)
+                log_transaction(action, item, qty, person, mdr, equipment, uom)
 
-            st.success("Transaction recorded")
-            st.rerun()
+                st.success("Done")
+                st.rerun()
 
 # =========================
 # TRANSACTIONS
@@ -289,7 +268,6 @@ elif choice == "Transactions":
 
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
-
     df = pd.DataFrame(sheet.get_all_records())
 
     if not df.empty:
@@ -297,5 +275,16 @@ elif choice == "Transactions":
         df = df.sort_values(by="Timestamp", ascending=False)
 
         st.dataframe(df, use_container_width=True)
-    else:
-        st.info("No transactions yet")
+
+        if st.button("Undo Last Transaction"):
+            last = df.iloc[0]
+
+            append_equipment_stock(
+                last["Equipment"],
+                last["Item"],
+                -int(last["Qty"]),
+                last["UOM"]
+            )
+
+            st.success("Reversed last transaction")
+            st.rerun()
