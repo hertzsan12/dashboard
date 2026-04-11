@@ -315,7 +315,7 @@ else:
             ], ignore_index=True)
 
             # ✅ SAVE ITEMS (FULL FIX)
-            if st.button("Save Equipment Items"):
+            if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
                 if not is_admin:
                     st.warning("Only admins can edit equipment items.")
                 else:
