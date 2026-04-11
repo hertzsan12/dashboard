@@ -327,15 +327,6 @@ else:
                 pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])
             ], ignore_index=True)
 
-            st.markdown("### Edit Item Quantities and UOM")
-
-            edited_df = st.data_editor(
-                df_items,
-                num_rows="dynamic",
-                use_container_width=True,
-                key="equip_edit"
-            )
-
             # ✅ SAVE ITEMS (FULL FIX)
             if st.button("Save Equipment Items"):
                 if not is_admin:
