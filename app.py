@@ -125,7 +125,7 @@ def read_equipment_items():
 
     for _, row in df.iterrows():
         eq = row.get("Equipment")
-        item = row.get("Item")
+        item = normalize_item_name(row.get("Item"))
         qty = int(row.get("Qty", 0))
         uom = row.get("UOM", "pcs")
 
@@ -141,6 +141,9 @@ def read_equipment_items():
 
             equipment_dict[eq][item]["qty"] += qty
             equipment_dict[eq][item]["uom"] = uom
+        if item == "__RESET__":
+            equipment_dict[eq] = {}
+            continue
 
     return equipment_dict
 
@@ -166,6 +169,11 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
         qty,
         uom
     ])
+
+def normalize_item_name(name):
+    if not name:
+        return ""
+    return name.upper().replace(" ", "")
 
 
 # =========================
@@ -278,6 +286,7 @@ else:
 
     elif choice == "Equipment":
         st.title("Equipment Inventory")
+
         equipment_items = read_equipment_items()
         equipment_list = sorted(equipment_items.keys())
         options = ["-- New Equipment --"] + equipment_list
@@ -291,17 +300,68 @@ else:
         else:
             eq_name = st.text_input("Edit equipment name", value=selected_eq)
 
+        # ✅ SAVE EQUIPMENT NAME
         if st.button("Save Equipment Name"):
             if not is_admin:
-                st.warning("Only admins can add or rename equipment.")
+                st.warning("Only admins can add equipment.")
             elif not eq_name.strip():
                 st.warning("Equipment name cannot be empty.")
             elif is_new and eq_name in equipment_items:
                 st.warning("Equipment already exists.")
             elif is_new:
                 append_equipment_stock(eq_name, "", 0, "")
-                st.success(f"Equipment '{eq_name}' added to cloud.")
+                st.success(f"Equipment '{eq_name}' added.")
                 st.rerun()
+
+        # ✅ SHOW ITEMS
+        if eq_name:
+            items = equipment_items.get(eq_name, {})
+
+            df_items = pd.DataFrame(
+                [{"Item": item, "Quantity": data["qty"], "UOM": data["uom"]}
+                 for item, data in items.items()]
+            )
+
+            df_items = pd.concat([
+                df_items,
+                pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])
+            ], ignore_index=True)
+
+            st.markdown("### Edit Item Quantities and UOM")
+
+            edited_df = st.data_editor(
+                df_items,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="equip_edit"
+            )
+
+            # ✅ SAVE ITEMS (FULL FIX)
+            if st.button("Save Equipment Items"):
+                if not is_admin:
+                    st.warning("Only admins can edit equipment items.")
+                else:
+                    edited_df = edited_df.dropna(subset=['Item'])
+                    edited_df = edited_df[edited_df['Item'] != ""]
+
+                    updated_items = {}
+
+                    for _, row in edited_df.iterrows():
+                        item = normalize_item_name(row['Item'])
+                        qty = int(row['Quantity']) if pd.notna(row['Quantity']) else 0
+                        uom = row['UOM'] if pd.notna(row['UOM']) else "pcs"
+
+                        updated_items[item] = {"qty": qty, "uom": uom}
+
+                    # 🔥 RESET old values
+                    append_equipment_stock(eq_name, "__RESET__", 0, "")
+
+                    # 🔥 SAVE new values
+                    for item, data in updated_items.items():
+                        append_equipment_stock(eq_name, item, data["qty"], data["uom"])
+    
+                    st.success("Equipment items saved successfully.")
+                    st.rerun()
 
         if eq_name:
             items = equipment_items.get(eq_name, {})
@@ -326,7 +386,7 @@ else:
                     # Build new equipment dict
                     updated_items = {}
                     for _, row in edited_df.iterrows():
-                        item = row['Item']
+                        item = normalize_item_name(row['Item'])
                         qty = int(row['Quantity']) if pd.notna(row['Quantity']) else 0
                         uom = row['UOM'] if pd.notna(row['UOM']) else "pcs"
                         updated_items[item] = {"qty": qty, "uom": uom}
