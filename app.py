@@ -372,7 +372,15 @@ else:
             df_items = pd.concat([df_items, pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])], ignore_index=True)
 
             st.markdown("### Edit Item Quantities and UOM")
-            edited_df = st.data_editor(df_items, num_rows="dynamic", use_container_width=True, key="equip_edit")
+            
+            key_name = f"equip_edit_{eq_name}" if eq_name else "equip_edit_default"
+            
+            edited_df = st.data_editor(
+                df_items,
+                num_rows="dynamic",
+                use_container_width=True,
+                key=f"equip_edit_{eq_name}"
+            )
 
             if st.button("Save Equipment Items"):
                 if not is_admin:
