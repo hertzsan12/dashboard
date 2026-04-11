@@ -149,10 +149,14 @@ def read_equipment_items():
 
 
 # =========================
-# WRITE EQUIPMENT ITEMS (DISABLED / NOT USED)
+# WRITE EQUIPMENT ITEMS
 # =========================
 def write_equipment_items(equipment_dict):
-    pass  # ❌ No longer used
+    pass
+        if action == "Withdraw":
+        append_equipment_stock(equipment_selected, item_selected, -qty, uom)
+    else:
+        append_equipment_stock(equipment_selected, item_selected, qty, uom)
 
 
 # =========================
