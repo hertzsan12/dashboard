@@ -149,17 +149,29 @@ def read_equipment_items():
 
 
 # =========================
-# WRITE EQUIPMENT ITEMS (DISABLED)
+# WRITE EQUIPMENT ITEMS (DISABLED / NOT USED)
 # =========================
 def write_equipment_items(equipment_dict):
-    st.warning("⚠️ Write operation disabled in cloud version")
+    pass  # ❌ No longer used
 
 
 # =========================
-# APPEND EQUIPMENT STOCK (DISABLED)
+# APPEND EQUIPMENT STOCK (GOOGLE SHEETS)
 # =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
-    st.warning("⚠️ Append operation disabled in cloud version")
+    client = connect_gsheet()
+
+    sheet = client.open_by_key("1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg").worksheet("equipment_stock")
+
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    sheet.append_row([
+        timestamp,
+        equipment,
+        item,
+        qty,
+        uom
+    ])
 
 
 # =========================
