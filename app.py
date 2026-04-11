@@ -147,17 +147,15 @@ def log_transaction(action, item, quantity, person, mdr_number, equipment, uom):
 # =========================
 st.set_page_config(layout="wide")
 
-menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
-choice = st.sidebar.radio("Go to", menu)
+st.sidebar.title("David Hertz Monitoring")
+choice = st.sidebar.radio("Go to", ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions", "Logout"])
+
 
 is_admin = True  # simplify for now
 
 # =========================
 # INVENTORY PAGE
 # =========================
-
-st.sidebar.title("David Hertz Monitoring")
-choice = st.sidebar.radio("Go to", ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions", "Logout"])
 
 if choice == "Inventory":
     st.title("Inventory Overview")
