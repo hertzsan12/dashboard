@@ -82,6 +82,7 @@ def read_equipment_items():
             equipment_dict[eq][item] = {"qty": 0, "uom": uom}
 
         equipment_dict[eq][item]["qty"] += qty
+        equipment_dict[eq][item]["qty"] = max(0, equipment_dict[eq][item]["qty"])
 
     return equipment_dict
 
@@ -262,7 +263,8 @@ elif choice == "Equipment":
                 append_equipment_stock(eq_name, item, -999999, data["uom"])
 
             for item, data in updated_items.items():
-                append_equipment_stock(eq_name, item, data["qty"], data["uom"])
+                current_total = data["qty"]
+                append_equipment_stock(eq_name, item, -current_total, data["uom"])
 
             st.success("Updated successfully")
 
