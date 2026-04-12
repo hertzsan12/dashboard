@@ -7,6 +7,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
 
+# =========================
+# NORMALIZE ITEM
+# =========================
 def normalize_item_name(name):
     if not name:
         return ""
@@ -15,6 +18,9 @@ def normalize_item_name(name):
     name = " ".join(name.split())
     return name
 
+# =========================
+# CONNECT GSHEET
+# =========================
 def connect_gsheet():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -25,13 +31,20 @@ def connect_gsheet():
     )
     return gspread.authorize(creds)
 
+# =========================
+# APPEND STOCK
+# =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     sheet.append_row([timestamp, equipment, item, qty, uom])
 
+# =========================
+# READ EQUIPMENT
+# =========================
 def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
@@ -42,7 +55,13 @@ def read_equipment_items():
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
-        qty = int(row.get("Qty", 0) or 0)
+
+        qty_raw = row.get("Qty", 0)
+        try:
+            qty = int(qty_raw)
+        except:
+            qty = 0
+
         uom = row.get("UOM", "pcs")
 
         if not eq or not item:
@@ -56,7 +75,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove zero
+    # remove zero or negative
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] <= 0:
@@ -64,6 +83,9 @@ def read_equipment_items():
 
     return equipment_dict
 
+# =========================
+# READ INVENTORY
+# =========================
 def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
@@ -74,7 +96,13 @@ def read_inventory():
 
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
-        qty = int(row.get("Qty", 0) or 0)
+
+        qty_raw = row.get("Qty", 0)
+        try:
+            qty = int(qty_raw)
+        except:
+            qty = 0
+
         uom = row.get("UOM", "pcs")
 
         if not item:
@@ -89,6 +117,9 @@ def read_inventory():
 
     return inventory, uoms
 
+# =========================
+# LOG TRANSACTION
+# =========================
 def log_transaction(action, item, qty, person, mdr, equipment, uom):
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
@@ -107,12 +138,16 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
         equipment
     ])
 
+# =========================
 # UI
+# =========================
 st.set_page_config(layout="wide")
 menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
 choice = st.sidebar.radio("Go to", menu)
 
+# =========================
 # INVENTORY
+# =========================
 if choice == "Inventory":
     inventory, uoms = read_inventory()
 
@@ -129,7 +164,9 @@ if choice == "Inventory":
 
     st.dataframe(pd.DataFrame(data))
 
+# =========================
 # EQUIPMENT
+# =========================
 elif choice == "Equipment":
     equipment_items = read_equipment_items()
     equipment_list = sorted(equipment_items.keys())
@@ -153,26 +190,27 @@ elif choice == "Equipment":
 
         if st.button("Save Equipment Items"):
 
-            updated_items = {}
-
             for _, row in edited.iterrows():
                 item = normalize_item_name(row.get("Item"))
                 if not item:
                     continue
 
                 qty = int(row.get("Quantity", 0))
+
+                # 🔥 CRITICAL FIX: SKIP ZERO
+                if qty <= 0:
+                    continue
+
                 uom = row.get("UOM", "pcs")
 
-                updated_items[item] = {"qty": qty, "uom": uom}
+                append_equipment_stock(eq_name, item, qty, uom)
 
-            # 🔥 WRITE ONLY NEW STATE (NO REVERSE)
-            for item, data in updated_items.items():
-                append_equipment_stock(eq_name, item, data["qty"], data["uom"])
-
-            st.success("Saved")
+            st.success("Saved successfully")
             st.rerun()
 
-# WITHDRAW
+# =========================
+# WITHDRAW / DELIVER
+# =========================
 elif choice == "Withdraw/Deliver":
     equipment_items = read_equipment_items()
     equipment = st.selectbox("Equipment", list(equipment_items.keys()))
@@ -203,7 +241,9 @@ elif choice == "Withdraw/Deliver":
             st.success("Done")
             st.rerun()
 
+# =========================
 # TRANSACTIONS
+# =========================
 elif choice == "Transactions":
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
