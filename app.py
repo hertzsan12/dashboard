@@ -63,20 +63,16 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
+
     df = pd.DataFrame(sheet.get_all_records())
 
     equipment_dict = {}
 
-    for _, row in edited.iterrows():
-        item = normalize_item_name(row.get("Item"))
-    
-        qty = int(row.get("Quantity", 0)) if pd.notna(row.get("Quantity")) else 0
-    
+    for _, row in df.iterrows():  # ✅ correct
+        eq = row.get("Equipment")
+        item = row.get("Item")
+        qty = int(row.get("Qty", 0))
         uom = row.get("UOM", "pcs")
-        if pd.isna(uom):
-            uom = "pcs"
-    
-        updated_items[item] = {"qty": qty, "uom": uom}
 
         if not eq:
             continue
