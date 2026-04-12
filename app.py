@@ -82,7 +82,12 @@ def read_equipment_items():
             equipment_dict[eq][item] = {"qty": 0, "uom": uom}
 
         equipment_dict[eq][item]["qty"] += qty
-        equipment_dict[eq][item]["qty"] = max(0, equipment_dict[eq][item]["qty"])
+
+    # remove zero items
+    for eq in list(equipment_dict.keys()):
+        for item in list(equipment_dict[eq].keys()):
+            if equipment_dict[eq][item]["qty"] <= 0:
+                del equipment_dict[eq][item]
 
     return equipment_dict
 
@@ -108,10 +113,15 @@ def read_inventory():
         inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
+    # remove zero items
+    for item in list(inventory.keys()):
+        if inventory[item] <= 0:
+            del inventory[item]
+
     return inventory, uoms
 
 # =========================
-# GET ALL ITEMS (SUGGESTION)
+# GET ALL ITEMS
 # =========================
 def get_all_items():
     inventory, _ = read_inventory()
@@ -190,11 +200,6 @@ elif choice == "Equipment":
     if eq_name == "-- New --":
         eq_name = st.text_input("New Equipment Name")
 
-        if st.button("Add Equipment"):
-            append_equipment_stock(eq_name, "", 0, "")
-            st.success("Added")
-            st.rerun()
-
     if eq_name:
         items = equipment_items.get(eq_name, {})
 
@@ -205,25 +210,19 @@ elif choice == "Equipment":
 
         df = pd.concat([df, pd.DataFrame([{"Item":"", "Quantity":0, "UOM":"pcs"}])])
 
-        all_items = get_all_items()
-
         edited = st.data_editor(
             df,
             key=f"edit_{eq_name}",
             num_rows="dynamic",
             column_config={
-                "Item": st.column_config.SelectboxColumn(
-                    "Item",
-                    options=all_items,
-                    help="Select existing item or type new"
-                )
+                "Item": st.column_config.TextColumn("Item")
             }
         )
 
         if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
 
             if st.session_state.get(f"saved_{eq_name}", False):
-                st.warning("Already saved. Please wait...")
+                st.warning("Already saved.")
                 st.stop()
 
             st.session_state[f"saved_{eq_name}"] = True
@@ -234,9 +233,13 @@ elif choice == "Equipment":
             edited = edited[edited["ITEM"] != ""]
 
             updated_items = {}
+            all_items = get_all_items()
 
             for _, row in edited.iterrows():
                 item_input = normalize_item_name(row.get("ITEM"))
+
+                if not item_input:
+                    continue
 
                 matched_item = next(
                     (i for i in all_items if normalize_item_name(i).replace(" ", "") == item_input.replace(" ", "")),
@@ -244,10 +247,7 @@ elif choice == "Equipment":
                 )
 
                 qty = int(row.get("QUANTITY", 0)) if pd.notna(row.get("QUANTITY")) else 0
-
-                uom = row.get("UOM", "pcs")
-                if pd.isna(uom):
-                    uom = "pcs"
+                uom = row.get("UOM", "pcs") or "pcs"
 
                 updated_items[matched_item] = {"qty": qty, "uom": uom}
 
@@ -258,13 +258,13 @@ elif choice == "Equipment":
                 st.session_state[f"saved_{eq_name}"] = False
                 st.stop()
 
+            # FIXED: correct reset
             for item, data in old_items.items():
-                # 🔥 FORCE REMOVE ALL HISTORY (FIX GHOST ITEMS)
-                append_equipment_stock(eq_name, item, -999999, data["uom"])
+                append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
 
+            # FIXED: correct add
             for item, data in updated_items.items():
-                current_total = data["qty"]
-                append_equipment_stock(eq_name, item, -current_total, data["uom"])
+                append_equipment_stock(eq_name, item, data["qty"], data["uom"])
 
             st.success("Updated successfully")
 
@@ -301,14 +301,7 @@ elif choice == "Withdraw/Deliver":
         if action == "Deliver":
             mdr = st.text_input("MDR Number")
 
-        disable_submit = (
-            not person.strip() or
-            (action == "Deliver" and not mdr) or
-            (action == "Withdraw" and qty > current_qty) or
-            qty == 0
-        )
-
-        if st.button("Submit", disabled=disable_submit):
+        if st.button("Submit"):
 
             if action == "Withdraw":
                 append_equipment_stock(equipment, item, -qty, uom)
