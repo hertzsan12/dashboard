@@ -55,7 +55,7 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
         person,
         mdr if action == "deliver" else "",
         equipment
-])
+    ])
 
 # =========================
 # READ EQUIPMENT
