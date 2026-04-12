@@ -44,7 +44,18 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    sheet.append_row([timestamp, equipment, item, qty, uom])
+    qty_signed = -qty if action == "withdraw" else qty
+
+    sheet.append_row([
+        timestamp,
+        action,
+        item,
+        qty_signed,
+        uom,
+        person,
+        mdr if action == "deliver" else "",
+        equipment
+])
 
 # =========================
 # READ EQUIPMENT
@@ -113,8 +124,17 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    qty_signed = -qty if action == "withdraw" else qty
+
     sheet.append_row([
-        timestamp, action, item, qty, uom, person, mdr, equipment
+        timestamp,
+        action,
+        item,
+        qty_signed,
+        uom,
+        person,
+        mdr if action == "deliver" else "",
+        equipment
     ])
 
 # =========================
@@ -201,18 +221,26 @@ elif choice == "Equipment":
 
                 updated[item] = {"qty": qty, "uom": uom}
 
-            # 🔥 reverse old
+            # 🔥 OLD ITEMS
             old_items = equipment_items.get(eq_name, {})
+
+            # 🔥 NEW ITEMS
+            new_items = updated_items
+
+            # 🔥 REVERSE ALL OLD FIRST
             for item, data in old_items.items():
                 append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
 
-            # 🔥 add new
-            for item, data in updated.items():
+            # 🔥 ADD ONLY CURRENT (NEW)
+            for item, data in new_items.items():
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
-
+                
             st.success("Updated")
             st.rerun()
 
+# =========================
+# WITHDRAW / DELIVER
+# =========================
 # =========================
 # WITHDRAW / DELIVER
 # =========================
@@ -232,24 +260,47 @@ elif choice == "Withdraw/Deliver":
         inventory, _ = read_inventory()
         total_qty = inventory.get(item, 0)
 
+        # 🔥 STOCK INFO
         st.write(f"Total Stock: {total_qty} {uom}")
         st.write(f"Equipment Stock: {current_qty} {uom}")
 
         if current_qty == 0:
             if total_qty > 0:
-                st.warning("Withdraw from other equipment")
+                st.warning("⚠️ Withdraw stocks from other equipment")
             else:
-                st.error("Follow up purchase")
+                st.error("🔴 Follow up Purchase / MR")
 
+        # 🔥 INPUTS
         action = st.radio("Action", ["Withdraw", "Deliver"])
-        qty = st.number_input("Qty", min_value=0)
+        qty = st.number_input("Quantity", min_value=0)
 
-        person = st.text_input("Person")
-        mdr = st.text_input("MDR")
+        person = st.text_input("Person in Charge")
 
-        if st.button("Submit"):
-            if action == "Withdraw" and qty > current_qty:
-                st.error("Cannot withdraw more than available")
+        # ✅ MDR only for Deliver
+        mdr = None
+        if action == "Deliver":
+            mdr = st.text_input("MDR Number", placeholder="Enter MDR reference...")
+
+        # 🔥 DISABLE LOGIC
+        disable_submit = (
+            not person.strip() or
+            (action == "Deliver" and not mdr) or
+            (action == "Withdraw" and qty > current_qty) or
+            qty == 0
+        )
+
+        # 🔥 SUBMIT
+        if st.button("Submit", key="submit_tx", disabled=disable_submit):
+
+            if not person.strip():
+                st.warning("Please enter person in charge.")
+
+            elif action == "Deliver" and not mdr:
+                st.warning("⚠️ MDR Number is required for delivery.")
+
+            elif action == "Withdraw" and qty > current_qty:
+                st.error("❌ Cannot withdraw more than available stock.")
+
             else:
                 if action == "Withdraw":
                     append_equipment_stock(equipment, item, -qty, uom)
@@ -258,9 +309,8 @@ elif choice == "Withdraw/Deliver":
 
                 log_transaction(action, item, qty, person, mdr, equipment, uom)
 
-                st.success("Done")
+                st.success("✅ Transaction recorded.")
                 st.rerun()
-
 # =========================
 # TRANSACTIONS
 # =========================
@@ -286,6 +336,18 @@ elif choice == "Transactions":
                 -int(last["Qty"]),
                 last["UOM"]
             )
+
+            # 🔥 mark as canceled in transaction log
+            sheet.append_row([
+                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "undo",
+                last["Item"],
+                -int(last["Qty"]),
+                last["UOM"],
+                "system",
+                "CANCELED",
+                last["Equipment"]
+        ]
 
             st.success("Reversed last transaction")
             st.rerun()
