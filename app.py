@@ -238,7 +238,7 @@ elif choice == "Equipment":
                 item_input = normalize_item_name(row.get("ITEM"))
 
                 matched_item = next(
-                    (i for i in all_items if i.replace(" ", "") == item_input.replace(" ", "")),
+                    (i for i in all_items if normalize_item_name(i).replace(" ", "") == item_input.replace(" ", "")),
                     item_input
                 )
 
@@ -258,7 +258,8 @@ elif choice == "Equipment":
                 st.stop()
 
             for item, data in old_items.items():
-                append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
+                # 🔥 FORCE REMOVE ALL HISTORY (FIX GHOST ITEMS)
+                append_equipment_stock(eq_name, item, -999999, data["uom"])
 
             for item, data in updated_items.items():
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
