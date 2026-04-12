@@ -8,7 +8,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # CONFIG
 # =========================
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
-
 LOW_STOCK_THRESHOLD = 5
 
 # =========================
@@ -44,17 +43,12 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    qty_signed = -qty if action == "withdraw" else qty
-
     sheet.append_row([
         timestamp,
-        action,
+        equipment,
         item,
-        qty_signed,
-        uom,
-        person,
-        mdr if action == "deliver" else "",
-        equipment
+        qty,
+        uom
     ])
 
 # =========================
@@ -65,10 +59,9 @@ def read_equipment_items():
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
     df = pd.DataFrame(sheet.get_all_records())
-
     equipment_dict = {}
 
-    for _, row in df.iterrows():  # ✅ correct
+    for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = row.get("Item")
         qty = int(row.get("Qty", 0))
@@ -98,8 +91,8 @@ def read_equipment_items():
 def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
-    df = pd.DataFrame(sheet.get_all_records())
 
+    df = pd.DataFrame(sheet.get_all_records())
     inventory = {}
     uoms = {}
 
@@ -117,6 +110,13 @@ def read_inventory():
     return inventory, uoms
 
 # =========================
+# GET ALL ITEMS (FOR SUGGESTION)
+# =========================
+def get_all_items():
+    inventory, _ = read_inventory()
+    return sorted(inventory.keys())
+
+# =========================
 # LOG TRANSACTION
 # =========================
 def log_transaction(action, item, qty, person, mdr, equipment, uom):
@@ -124,8 +124,7 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    qty_signed = -qty if action == "withdraw" else qty
+    qty_signed = -qty if action == "Withdraw" else qty
 
     sheet.append_row([
         timestamp,
@@ -134,7 +133,7 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
         qty_signed,
         uom,
         person,
-        mdr if action == "deliver" else "",
+        mdr if action == "Deliver" else "",
         equipment
     ])
 
@@ -142,12 +141,10 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
 # UI
 # =========================
 st.set_page_config(layout="wide")
+st.sidebar.title("Inventory System")
 
-st.sidebar.title("David Hertz Monitoring")
 menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
 choice = st.sidebar.radio("Go to", menu)
-
-is_admin = True
 
 # =========================
 # INVENTORY
@@ -199,59 +196,67 @@ elif choice == "Equipment":
 
     if eq_name:
         items = equipment_items.get(eq_name, {})
-    
+
         df = pd.DataFrame([
             {"Item": k, "Quantity": v["qty"], "UOM": v["uom"]}
             for k, v in items.items()
         ])
-    
-        df = pd.concat([df, pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])])
-    
-        # ✅ editor variable = edited
-        edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
-    
+
+        df = pd.concat([df, pd.DataFrame([{"Item":"", "Quantity":0, "UOM":"pcs"}])])
+
+        all_items = get_all_items()
+
+        edited = st.data_editor(
+            df,
+            key=f"edit_{eq_name}",
+            num_rows="dynamic",
+            column_config={
+                "Item": st.column_config.SelectboxColumn(
+                    "Item",
+                    options=all_items,
+                    help="Select existing item or type new"
+                )
+            }
+        )
+
         if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
-    
-            if edited is None or not isinstance(edited, pd.DataFrame):
-                st.error("No data to save.")
-                st.stop()
-    
-            # 🔥 CLEAN COLUMNS
-            edited.columns = [str(col).strip().title() for col in list(edited.columns)]
-    
-            if "Item" not in edited.columns:
-                st.error("Column 'Item' not found.")
-                st.write("Columns detected:", edited.columns)
-                st.stop()
-    
-            # 🔥 CLEAN DATA
-            edited = edited.dropna(subset=["Item"])
-            edited = edited[edited["Item"] != ""]
-    
+
+            edited.columns = [str(col).strip().upper() for col in edited.columns]
+
+            edited = edited.dropna(subset=["ITEM"])
+            edited = edited[edited["ITEM"] != ""]
+
             updated_items = {}
-    
+            all_items = get_all_items()
+
             for _, row in edited.iterrows():
-                item = normalize_item_name(row["Item"])
-                qty = int(row["Quantity"]) if pd.notna(row["Quantity"]) else 0
-                uom = row["UOM"] if pd.notna(row["UOM"]) else "pcs"
-    
-                updated_items[item] = {"qty": qty, "uom": uom}
-    
-            # 🔥 REVERSE OLD
+                item_input = normalize_item_name(row.get("ITEM"))
+
+                # 🔥 AUTO MATCH (PREVENT DUPLICATES)
+                matched_item = next(
+                    (i for i in all_items if i.replace(" ", "") == item_input.replace(" ", "")),
+                    item_input
+                )
+
+                qty = int(row.get("QUANTITY", 0)) if pd.notna(row.get("QUANTITY")) else 0
+
+                uom = row.get("UOM", "pcs")
+                if pd.isna(uom):
+                    uom = "pcs"
+
+                updated_items[matched_item] = {"qty": qty, "uom": uom}
+
             old_items = equipment_items.get(eq_name, {})
+
             for item, data in old_items.items():
                 append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
-    
-            # 🔥 ADD NEW
+
             for item, data in updated_items.items():
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
-    
+
             st.success("Updated successfully")
             st.rerun()
 
-# =========================
-# WITHDRAW / DELIVER
-# =========================
 # =========================
 # WITHDRAW / DELIVER
 # =========================
@@ -271,28 +276,23 @@ elif choice == "Withdraw/Deliver":
         inventory, _ = read_inventory()
         total_qty = inventory.get(item, 0)
 
-        # 🔥 STOCK INFO
         st.write(f"Total Stock: {total_qty} {uom}")
         st.write(f"Equipment Stock: {current_qty} {uom}")
 
         if current_qty == 0:
             if total_qty > 0:
-                st.warning("⚠️ Withdraw stocks from other equipment")
+                st.warning("Withdraw from other equipment")
             else:
-                st.error("🔴 Follow up Purchase / MR")
+                st.error("Follow up purchase")
 
-        # 🔥 INPUTS
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Quantity", min_value=0)
+        person = st.text_input("Person")
 
-        person = st.text_input("Person in Charge")
-
-        # ✅ MDR only for Deliver
         mdr = None
         if action == "Deliver":
-            mdr = st.text_input("MDR Number", placeholder="Enter MDR reference...")
+            mdr = st.text_input("MDR Number")
 
-        # 🔥 DISABLE LOGIC
         disable_submit = (
             not person.strip() or
             (action == "Deliver" and not mdr) or
@@ -300,28 +300,18 @@ elif choice == "Withdraw/Deliver":
             qty == 0
         )
 
-        # 🔥 SUBMIT
-        if st.button("Submit", key="submit_tx", disabled=disable_submit):
+        if st.button("Submit", disabled=disable_submit):
 
-            if not person.strip():
-                st.warning("Please enter person in charge.")
-
-            elif action == "Deliver" and not mdr:
-                st.warning("⚠️ MDR Number is required for delivery.")
-
-            elif action == "Withdraw" and qty > current_qty:
-                st.error("❌ Cannot withdraw more than available stock.")
-
+            if action == "Withdraw":
+                append_equipment_stock(equipment, item, -qty, uom)
             else:
-                if action == "Withdraw":
-                    append_equipment_stock(equipment, item, -qty, uom)
-                else:
-                    append_equipment_stock(equipment, item, qty, uom)
+                append_equipment_stock(equipment, item, qty, uom)
 
-                log_transaction(action, item, qty, person, mdr, equipment, uom)
+            log_transaction(action, item, qty, person, mdr, equipment, uom)
 
-                st.success("✅ Transaction recorded.")
-                st.rerun()
+            st.success("Transaction recorded")
+            st.rerun()
+
 # =========================
 # TRANSACTIONS
 # =========================
@@ -347,18 +337,6 @@ elif choice == "Transactions":
                 -int(last["Qty"]),
                 last["UOM"]
             )
-
-            # 🔥 mark as canceled in transaction log
-            sheet.append_row([
-                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                "undo",
-                last["Item"],
-                -int(last["Qty"]),
-                last["UOM"],
-                "system",
-                "CANCELED",
-                last["Equipment"]
-        ])
 
             st.success("Reversed last transaction")
             st.rerun()
