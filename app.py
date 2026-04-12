@@ -208,34 +208,32 @@ elif choice == "Equipment":
 
         edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
 
-        if st.button("Save Equipment Items"):
-            edited = edited.dropna(subset=["Item"])
-            edited = edited[edited["Item"] != ""]
+        if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
 
-            updated = {}
+            edited_df = edited_df.dropna(subset=["Item"])
+            edited_df = edited_df[edited_df["Item"] != ""]
 
-            for _, row in edited.iterrows():
+            updated_items = {}
+
+            for _, row in edited_df.iterrows():
                 item = normalize_item_name(row["Item"])
                 qty = int(row["Quantity"])
                 uom = row["UOM"]
 
-                updated[item] = {"qty": qty, "uom": uom}
+                updated_items[item] = {"qty": qty, "uom": uom}
 
             # 🔥 OLD ITEMS
             old_items = equipment_items.get(eq_name, {})
 
-            # 🔥 NEW ITEMS
-            new_items = updated_items
-
-            # 🔥 REVERSE ALL OLD FIRST
+            # 🔥 REVERSE OLD
             for item, data in old_items.items():
                 append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
 
-            # 🔥 ADD ONLY CURRENT (NEW)
-            for item, data in new_items.items():
+            # 🔥 ADD NEW
+            for item, data in updated_items.items():
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
-                
-            st.success("Updated")
+
+            st.success("Updated successfully")
             st.rerun()
 
 # =========================
