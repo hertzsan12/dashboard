@@ -9,7 +9,7 @@ SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
 
 # =========================
-# NORMALIZE
+# NORMALIZE ITEM
 # =========================
 def normalize_item_name(name):
     if not name:
@@ -20,7 +20,7 @@ def normalize_item_name(name):
     return name
 
 # =========================
-# GSHEET CONNECT
+# CONNECT GSHEET
 # =========================
 def connect_gsheet():
     scope = [
@@ -85,7 +85,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove zero items
+    # remove zero or negative
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] <= 0:
@@ -134,12 +134,13 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    qty_signed = -qty if action == "Withdraw" else qty
 
     sheet.append_row([
         timestamp,
         action,
         item,
-        qty,
+        qty_signed,
         uom,
         person,
         mdr,
@@ -203,20 +204,40 @@ elif choice == "Equipment":
         if st.button("Save Equipment Items"):
 
             old_items = equipment_items.get(eq_name, {})
+            processed_items = set()
 
             for _, row in edited.iterrows():
-                item = normalize_item_name(row.get("Item"))
-                if not item:
+                new_item = normalize_item_name(row.get("Item"))
+                if not new_item:
                     continue
 
                 new_qty = int(row.get("Quantity", 0))
                 uom = row.get("UOM", "pcs")
 
-                old_qty = old_items.get(item, {}).get("qty", 0)
+                # match old item
+                matched_old = None
+                for old_item in old_items:
+                    if normalize_item_name(old_item).replace(" ", "") == new_item.replace(" ", ""):
+                        matched_old = old_item
+                        break
+
+                old_qty = old_items.get(matched_old, {}).get("qty", 0) if matched_old else 0
+
+                # remove old if renamed
+                if matched_old and matched_old != new_item:
+                    append_equipment_stock(eq_name, matched_old, -old_qty, uom)
+
                 diff = new_qty - old_qty
 
                 if diff != 0:
-                    append_equipment_stock(eq_name, item, diff, uom)
+                    append_equipment_stock(eq_name, new_item, diff, uom)
+
+                processed_items.add(new_item)
+
+            # remove deleted items
+            for old_item, data in old_items.items():
+                if old_item not in processed_items:
+                    append_equipment_stock(eq_name, old_item, -data["qty"], data["uom"])
 
             st.success("Saved successfully")
             st.rerun()
@@ -260,15 +281,7 @@ elif choice == "Withdraw/Deliver":
 
             append_equipment_stock(equipment, item, change, uom)
 
-            log_transaction(
-                action,
-                item,
-                change,
-                person,
-                mdr,
-                equipment,
-                uom
-            )
+            log_transaction(action, item, qty, person, mdr, equipment, uom)
 
             st.success("Transaction recorded")
             st.rerun()
@@ -301,9 +314,9 @@ elif choice == "Transactions":
             )
 
             log_transaction(
-                "canceled",
+                "Canceled",
                 last["Item"],
-                -int(last["Qty"]),
+                abs(int(last["Qty"])),
                 last["Person"],
                 "Canceled",
                 last["Equipment"],
