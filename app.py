@@ -198,54 +198,53 @@ elif choice == "Equipment":
 
     if eq_name:
         items = equipment_items.get(eq_name, {})
-
+    
         df = pd.DataFrame([
             {"Item": k, "Quantity": v["qty"], "UOM": v["uom"]}
             for k, v in items.items()
         ])
-
-        df = pd.concat([df, pd.DataFrame([{"Item":"", "Quantity":0, "UOM":"pcs"}])])
-
+    
+        df = pd.concat([df, pd.DataFrame([{"Item": "", "Quantity": 0, "UOM": "pcs"}])])
+    
+        # ✅ editor variable = edited
         edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
-
+    
         if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
-
-            if edited_df is None or not isinstance(edited_df, pd.DataFrame):
+    
+            if edited is None or not isinstance(edited, pd.DataFrame):
                 st.error("No data to save.")
                 st.stop()
-        
-            # 🔥 SAFE COLUMN CLEAN
-            edited_df.columns = [str(col).strip().title() for col in list(edited_df.columns)]
-        
-            if "Item" not in edited_df.columns:
+    
+            # 🔥 CLEAN COLUMNS
+            edited.columns = [str(col).strip().title() for col in list(edited.columns)]
+    
+            if "Item" not in edited.columns:
                 st.error("Column 'Item' not found.")
-                st.write("Columns detected:", edited_df.columns)
+                st.write("Columns detected:", edited.columns)
                 st.stop()
-        
+    
             # 🔥 CLEAN DATA
-            edited_df = edited_df.dropna(subset=["Item"])
-            edited_df = edited_df[edited_df["Item"] != ""]
-        
+            edited = edited.dropna(subset=["Item"])
+            edited = edited[edited["Item"] != ""]
+    
             updated_items = {}
-        
-            for _, row in edited_df.iterrows():
+    
+            for _, row in edited.iterrows():
                 item = normalize_item_name(row["Item"])
                 qty = int(row["Quantity"]) if pd.notna(row["Quantity"]) else 0
                 uom = row["UOM"] if pd.notna(row["UOM"]) else "pcs"
-        
+    
                 updated_items[item] = {"qty": qty, "uom": uom}
-        
-            # 🔥 OLD ITEMS
-            old_items = equipment_items.get(eq_name, {})
-        
+    
             # 🔥 REVERSE OLD
+            old_items = equipment_items.get(eq_name, {})
             for item, data in old_items.items():
                 append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
-        
+    
             # 🔥 ADD NEW
             for item, data in updated_items.items():
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
-        
+    
             st.success("Updated successfully")
             st.rerun()
 
