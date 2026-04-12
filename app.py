@@ -7,6 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
+KILL_QTY = -999999  # 🔥 kill signal
 
 # =========================
 # NORMALIZE ITEM
@@ -18,6 +19,9 @@ def normalize_item_name(name):
     name = name.replace(",", ", ")
     name = " ".join(name.split())
     return name
+
+def clean_compare(name):
+    return normalize_item_name(name).replace(",", "").replace(" ", "")
 
 # =========================
 # CONNECT GSHEET
@@ -62,6 +66,7 @@ def read_equipment_items():
 
     df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
+    killed_items = set()
 
     for _, row in df.iterrows():
         eq = row.get("Equipment")
@@ -77,6 +82,14 @@ def read_equipment_items():
         if not eq or not item:
             continue
 
+        # 🔥 detect deleted
+        if qty <= KILL_QTY:
+            killed_items.add((eq, item))
+            continue
+
+        if (eq, item) in killed_items:
+            continue
+
         if eq not in equipment_dict:
             equipment_dict[eq] = {}
 
@@ -85,13 +98,11 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove zero or negative
+    # keep zero, remove only negative garbage
     for eq in list(equipment_dict.keys()):
-        # 🔥 KEEP ZERO, REMOVE ONLY NEGATIVE
-        for eq in list(equipment_dict.keys()):
-            for item in list(equipment_dict[eq].keys()):
-                if equipment_dict[eq][item]["qty"] <= 0:
-                    del equipment_dict[eq][item]
+        for item in list(equipment_dict[eq].keys()):
+            if equipment_dict[eq][item]["qty"] < 0:
+                del equipment_dict[eq][item]
 
     return equipment_dict
 
@@ -105,30 +116,35 @@ def read_inventory():
     df = pd.DataFrame(safe_read(sheet))
     inventory = {}
     uoms = {}
+    killed_items = set()
 
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
-    
-        if not item:
-            continue
-    
+
         try:
             qty = int(row.get("Qty", 0))
         except:
             qty = 0
-    
-        uom = row.get("UOM", "pcs")
-    
-        # 🔥 ALWAYS INITIALIZE ITEM FIRST
-        if item not in inventory:
-            inventory[item] = 0
-            uoms[item] = uom
-    
-        # 🔥 THEN ADD QUANTITY
-        inventory[item] += qty
 
+        uom = row.get("UOM", "pcs")
+
+        if not item:
+            continue
+
+        # 🔥 detect deleted
+        if qty <= KILL_QTY:
+            killed_items.add(item)
+            continue
+
+        if item in killed_items:
+            continue
+
+        inventory[item] = inventory.get(item, 0) + qty
+        uoms[item] = uom
+
+    # keep zero
     for item in list(inventory.keys()):
-        if inventory[item] < -9999:
+        if inventory[item] < 0:
             del inventory[item]
 
     return inventory, uoms
@@ -221,33 +237,32 @@ elif choice == "Equipment":
                 new_qty = int(row.get("Quantity", 0))
                 uom = row.get("UOM", "pcs")
 
-                # match old item
+                # better matching
                 matched_old = None
                 for old_item in old_items:
-                    if normalize_item_name(old_item).replace(" ", "") == new_item.replace(" ", ""):
+                    if clean_compare(old_item) == clean_compare(new_item):
                         matched_old = old_item
                         break
 
                 old_qty = old_items.get(matched_old, {}).get("qty", 0) if matched_old else 0
 
-                # remove old if renamed
+                # rename handling
                 if matched_old and matched_old != new_item:
                     append_equipment_stock(eq_name, matched_old, -old_qty, uom)
+                    append_equipment_stock(eq_name, matched_old, KILL_QTY, uom)
 
                 diff = new_qty - old_qty
-                # 🔥 PREVENT NEGATIVE CORRUPTION
-                if old_qty == 0 and new_qty == 0:
-                    continue
 
                 if diff != 0:
                     append_equipment_stock(eq_name, new_item, diff, uom)
 
                 processed_items.add(new_item)
 
-            # remove deleted items
+            # delete removed items
             for old_item, data in old_items.items():
                 if old_item not in processed_items:
                     append_equipment_stock(eq_name, old_item, -data["qty"], data["uom"])
+                    append_equipment_stock(eq_name, old_item, KILL_QTY, data["uom"])
 
             st.success("Saved successfully")
             st.rerun()
@@ -287,28 +302,15 @@ elif choice == "Withdraw/Deliver":
 
         if st.button("Submit") and qty > 0:
 
-            # 🔥 PREVENT OVER / DOUBLE WITHDRAW
-            if action == "Withdraw" and qty > current_qty:
-                st.error(f"Cannot withdraw more than available ({current_qty})")
-                st.stop()
-        
             change = -qty if action == "Withdraw" else qty
-        
+
             append_equipment_stock(equipment, item, change, uom)
-        
-            log_transaction(
-                action,
-                item,
-                qty,
-                person,
-                mdr,
-                equipment,
-                uom
-            )
-        
+
+            log_transaction(action, item, qty, person, mdr, equipment, uom)
+
             st.success("Transaction recorded")
             st.rerun()
-    
+
 # =========================
 # TRANSACTIONS
 # =========================
