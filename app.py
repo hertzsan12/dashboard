@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import gspread
+import time
 from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
@@ -32,6 +33,17 @@ def connect_gsheet():
     return gspread.authorize(creds)
 
 # =========================
+# SAFE READ (WITH RETRY)
+# =========================
+def safe_read_sheet(sheet):
+    for _ in range(3):
+        try:
+            return sheet.get_all_records()
+        except:
+            time.sleep(1)
+    return []
+
+# =========================
 # APPEND STOCK
 # =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
@@ -39,7 +51,6 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     sheet.append_row([timestamp, equipment, item, qty, uom])
 
 # =========================
@@ -49,7 +60,9 @@ def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
-    df = pd.DataFrame(sheet.get_all_records())
+    data = safe_read_sheet(sheet)
+    df = pd.DataFrame(data)
+
     equipment_dict = {}
 
     for _, row in df.iterrows():
@@ -75,7 +88,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove zero or negative
+    # remove zero/negative
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] <= 0:
@@ -90,7 +103,9 @@ def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
-    df = pd.DataFrame(sheet.get_all_records())
+    data = safe_read_sheet(sheet)
+    df = pd.DataFrame(data)
+
     inventory = {}
     uoms = {}
 
@@ -149,6 +164,8 @@ choice = st.sidebar.radio("Go to", menu)
 # INVENTORY
 # =========================
 if choice == "Inventory":
+    st.title("Inventory Overview")
+
     inventory, uoms = read_inventory()
 
     data = []
@@ -168,6 +185,8 @@ if choice == "Inventory":
 # EQUIPMENT
 # =========================
 elif choice == "Equipment":
+    st.title("Equipment Inventory")
+
     equipment_items = read_equipment_items()
     equipment_list = sorted(equipment_items.keys())
 
@@ -197,7 +216,7 @@ elif choice == "Equipment":
 
                 qty = int(row.get("Quantity", 0))
 
-                # 🔥 CRITICAL FIX: SKIP ZERO
+                # 🔥 FIX: skip zero
                 if qty <= 0:
                     continue
 
@@ -212,6 +231,8 @@ elif choice == "Equipment":
 # WITHDRAW / DELIVER
 # =========================
 elif choice == "Withdraw/Deliver":
+    st.title("Withdraw / Deliver")
+
     equipment_items = read_equipment_items()
     equipment = st.selectbox("Equipment", list(equipment_items.keys()))
 
@@ -245,9 +266,12 @@ elif choice == "Withdraw/Deliver":
 # TRANSACTIONS
 # =========================
 elif choice == "Transactions":
+    st.title("Transactions")
+
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
-    df = pd.DataFrame(sheet.get_all_records())
+    data = safe_read_sheet(sheet)
+    df = pd.DataFrame(data)
 
     if not df.empty:
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
