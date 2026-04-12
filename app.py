@@ -87,9 +87,10 @@ def read_equipment_items():
 
     # remove zero or negative
     for eq in list(equipment_dict.keys()):
-        for item in list(equipment_dict[eq].keys()):
-            if equipment_dict[eq][item]["qty"] <= 0:
-                del equipment_dict[eq][item]
+        # 🔥 KEEP ZERO, REMOVE ONLY NEGATIVE
+        for item in list(inventory.keys()):
+            if inventory[item] < 0:
+                del inventory[item]
 
     return equipment_dict
 
