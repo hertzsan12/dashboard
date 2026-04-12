@@ -9,7 +9,7 @@ SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
 
 # =========================
-# NORMALIZE ITEM
+# NORMALIZE
 # =========================
 def normalize_item_name(name):
     if not name:
@@ -20,7 +20,7 @@ def normalize_item_name(name):
     return name
 
 # =========================
-# CONNECT GSHEET
+# GSHEET CONNECT
 # =========================
 def connect_gsheet():
     scope = [
@@ -33,9 +33,9 @@ def connect_gsheet():
     return gspread.authorize(creds)
 
 # =========================
-# SAFE READ (WITH RETRY)
+# SAFE READ
 # =========================
-def safe_read_sheet(sheet):
+def safe_read(sheet):
     for _ in range(3):
         try:
             return sheet.get_all_records()
@@ -60,18 +60,15 @@ def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
-    data = safe_read_sheet(sheet)
-    df = pd.DataFrame(data)
-
+    df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
 
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
 
-        qty_raw = row.get("Qty", 0)
         try:
-            qty = int(qty_raw)
+            qty = int(row.get("Qty", 0))
         except:
             qty = 0
 
@@ -88,7 +85,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove zero/negative
+    # remove zero items
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] <= 0:
@@ -103,18 +100,15 @@ def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
-    data = safe_read_sheet(sheet)
-    df = pd.DataFrame(data)
-
+    df = pd.DataFrame(safe_read(sheet))
     inventory = {}
     uoms = {}
 
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
 
-        qty_raw = row.get("Qty", 0)
         try:
-            qty = int(qty_raw)
+            qty = int(row.get("Qty", 0))
         except:
             qty = 0
 
@@ -140,16 +134,15 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
 
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    qty_signed = -qty if action == "Withdraw" else qty
 
     sheet.append_row([
         timestamp,
         action,
         item,
-        qty_signed,
+        qty,
         uom,
         person,
-        mdr if action == "Deliver" else "",
+        mdr,
         equipment
     ])
 
@@ -209,20 +202,21 @@ elif choice == "Equipment":
 
         if st.button("Save Equipment Items"):
 
+            old_items = equipment_items.get(eq_name, {})
+
             for _, row in edited.iterrows():
                 item = normalize_item_name(row.get("Item"))
                 if not item:
                     continue
 
-                qty = int(row.get("Quantity", 0))
-
-                # 🔥 FIX: skip zero
-                if qty <= 0:
-                    continue
-
+                new_qty = int(row.get("Quantity", 0))
                 uom = row.get("UOM", "pcs")
 
-                append_equipment_stock(eq_name, item, qty, uom)
+                old_qty = old_items.get(item, {}).get("qty", 0)
+                diff = new_qty - old_qty
+
+                if diff != 0:
+                    append_equipment_stock(eq_name, item, diff, uom)
 
             st.success("Saved successfully")
             st.rerun()
@@ -243,23 +237,40 @@ elif choice == "Withdraw/Deliver":
         current_qty = items[item]["qty"]
         uom = items[item]["uom"]
 
+        inventory, _ = read_inventory()
+        total_qty = inventory.get(item, 0)
+
+        st.write(f"Total Stock: {total_qty} {uom}")
+        st.write(f"Equipment Stock: {current_qty} {uom}")
+
+        if current_qty == 0:
+            if total_qty > 0:
+                st.warning("Withdraw Stocks from other Equipment")
+            else:
+                st.error("Follow up Purchase / MR")
+
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Qty", min_value=0)
         person = st.text_input("Person")
-
-        mdr = st.text_input("MDR") if action == "Deliver" else None
+        mdr = st.text_input("MDR") if action == "Deliver" else ""
 
         if st.button("Submit") and qty > 0:
-            append_equipment_stock(
-                equipment,
+
+            change = -qty if action == "Withdraw" else qty
+
+            append_equipment_stock(equipment, item, change, uom)
+
+            log_transaction(
+                action,
                 item,
-                -qty if action == "Withdraw" else qty,
+                change,
+                person,
+                mdr,
+                equipment,
                 uom
             )
 
-            log_transaction(action, item, qty, person, mdr, equipment, uom)
-
-            st.success("Done")
+            st.success("Transaction recorded")
             st.rerun()
 
 # =========================
@@ -270,9 +281,34 @@ elif choice == "Transactions":
 
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
-    data = safe_read_sheet(sheet)
-    df = pd.DataFrame(data)
+
+    df = pd.DataFrame(safe_read(sheet))
 
     if not df.empty:
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-        st.dataframe(df.sort_values(by="Timestamp", ascending=False))
+        df = df.sort_values(by="Timestamp", ascending=False)
+
+        st.dataframe(df)
+
+        if st.button("Undo Last"):
+            last = df.iloc[0]
+
+            append_equipment_stock(
+                last["Equipment"],
+                last["Item"],
+                -int(last["Qty"]),
+                last["UOM"]
+            )
+
+            log_transaction(
+                "canceled",
+                last["Item"],
+                -int(last["Qty"]),
+                last["Person"],
+                "Canceled",
+                last["Equipment"],
+                last["UOM"]
+            )
+
+            st.success("Transaction canceled")
+            st.rerun()
