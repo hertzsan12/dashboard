@@ -66,8 +66,22 @@ def read_equipment_items():
 
     df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
-    killed_items = set()
 
+    # 🔥 STEP 1: detect killed first
+    killed_items = set()
+    for _, row in df.iterrows():
+        eq = row.get("Equipment")
+        item = normalize_item_name(row.get("Item"))
+
+        try:
+            qty = int(row.get("Qty", 0))
+        except:
+            qty = 0
+
+        if qty <= KILL_QTY:
+            killed_items.add((eq, item))
+
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
@@ -82,11 +96,6 @@ def read_equipment_items():
         if not eq or not item:
             continue
 
-        # 🔥 detect deleted
-        if qty <= KILL_QTY:
-            killed_items.add((eq, item))
-            continue
-
         if (eq, item) in killed_items:
             continue
 
@@ -98,7 +107,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # keep zero, remove only negative garbage
+    # remove only negative garbage
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] < 0:
@@ -114,10 +123,24 @@ def read_inventory():
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
 
     df = pd.DataFrame(safe_read(sheet))
+
     inventory = {}
     uoms = {}
-    killed_items = set()
 
+    # 🔥 STEP 1: detect killed first
+    killed_items = set()
+    for _, row in df.iterrows():
+        item = normalize_item_name(row.get("Item"))
+
+        try:
+            qty = int(row.get("Qty", 0))
+        except:
+            qty = 0
+
+        if qty <= KILL_QTY:
+            killed_items.add(item)
+
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
 
@@ -129,11 +152,6 @@ def read_inventory():
         uom = row.get("UOM", "pcs")
 
         if not item:
-            continue
-
-        # 🔥 detect deleted
-        if qty <= KILL_QTY:
-            killed_items.add(item)
             continue
 
         if item in killed_items:
@@ -237,7 +255,6 @@ elif choice == "Equipment":
                 new_qty = int(row.get("Quantity", 0))
                 uom = row.get("UOM", "pcs")
 
-                # better matching
                 matched_old = None
                 for old_item in old_items:
                     if clean_compare(old_item) == clean_compare(new_item):
@@ -246,7 +263,6 @@ elif choice == "Equipment":
 
                 old_qty = old_items.get(matched_old, {}).get("qty", 0) if matched_old else 0
 
-                # rename handling
                 if matched_old and matched_old != new_item:
                     append_equipment_stock(eq_name, matched_old, -old_qty, uom)
                     append_equipment_stock(eq_name, matched_old, KILL_QTY, uom)
@@ -258,7 +274,6 @@ elif choice == "Equipment":
 
                 processed_items.add(new_item)
 
-            # delete removed items
             for old_item, data in old_items.items():
                 if old_item not in processed_items:
                     append_equipment_stock(eq_name, old_item, -data["qty"], data["uom"])
@@ -272,6 +287,9 @@ elif choice == "Equipment":
 # =========================
 elif choice == "Withdraw/Deliver":
     st.title("Withdraw / Deliver")
+
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
 
     equipment_items = read_equipment_items()
     equipment = st.selectbox("Equipment", list(equipment_items.keys()))
@@ -300,16 +318,34 @@ elif choice == "Withdraw/Deliver":
         person = st.text_input("Person")
         mdr = st.text_input("MDR") if action == "Deliver" else ""
 
-        if st.button("Submit") and qty > 0:
+        confirm = st.checkbox("✅ Confirm Transaction")
 
-            change = -qty if action == "Withdraw" else qty
+        if st.session_state.submitted:
+            st.success("✅ Transaction already completed")
+            if st.button("🔄 New Transaction"):
+                st.session_state.submitted = False
+                st.rerun()
 
-            append_equipment_stock(equipment, item, change, uom)
+        else:
+            if st.button("Submit"):
 
-            log_transaction(action, item, qty, person, mdr, equipment, uom)
+                if not confirm:
+                    st.warning("⚠️ Please confirm the transaction first")
+                elif qty <= 0:
+                    st.warning("⚠️ Enter valid quantity")
+                elif not person:
+                    st.warning("⚠️ Enter person name")
+                else:
+                    change = -qty if action == "Withdraw" else qty
 
-            st.success("Transaction recorded")
-            st.rerun()
+                    append_equipment_stock(equipment, item, change, uom)
+                    log_transaction(action, item, qty, person, mdr, equipment, uom)
+
+                    st.session_state.submitted = True
+
+                    st.success(f"✅ {action} completed by {person}")
+                    st.info("🔒 Transaction locked to prevent duplicate entry")
+                    st.rerun()
 
 # =========================
 # TRANSACTIONS
