@@ -347,7 +347,7 @@ elif choice == "Transactions":
                 "system",
                 "CANCELED",
                 last["Equipment"]
-        ]
+        ])
 
             st.success("Reversed last transaction")
             st.rerun()
