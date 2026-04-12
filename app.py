@@ -210,7 +210,7 @@ elif choice == "Equipment":
 
         if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
 
-            edited_df.columns = edited_df.columns.str.strip().str.title()
+            edited_df.columns = [str(col).strip().title() for col in edited_df.columns]
 
             edited_df = edited_df.dropna(subset=["Item"])    
             edited_df = edited_df[edited_df["Item"] != ""]
