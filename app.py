@@ -108,19 +108,24 @@ def read_inventory():
 
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
-
+    
+        if not item:
+            continue
+    
         try:
             qty = int(row.get("Qty", 0))
         except:
             qty = 0
-
+    
         uom = row.get("UOM", "pcs")
-
-        if not item:
-            continue
-
-        inventory[item] = inventory.get(item, 0) + qty
-        uoms[item] = uom
+    
+        # 🔥 ALWAYS INITIALIZE ITEM FIRST
+        if item not in inventory:
+            inventory[item] = 0
+            uoms[item] = uom
+    
+        # 🔥 THEN ADD QUANTITY
+        inventory[item] += qty
 
     for item in list(inventory.keys()):
         if inventory[item] <= 0:
