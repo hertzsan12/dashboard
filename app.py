@@ -128,7 +128,7 @@ def read_inventory():
         inventory[item] += qty
 
     for item in list(inventory.keys()):
-        if inventory[item] <= 0:
+        if inventory[item] < -9999:
             del inventory[item]
 
     return inventory, uoms
@@ -235,6 +235,9 @@ elif choice == "Equipment":
                     append_equipment_stock(eq_name, matched_old, -old_qty, uom)
 
                 diff = new_qty - old_qty
+                # 🔥 PREVENT NEGATIVE CORRUPTION
+                if old_qty == 0 and new_qty == 0:
+                    continue
 
                 if diff != 0:
                     append_equipment_stock(eq_name, new_item, diff, uom)
@@ -284,15 +287,28 @@ elif choice == "Withdraw/Deliver":
 
         if st.button("Submit") and qty > 0:
 
+            # 🔥 PREVENT OVER / DOUBLE WITHDRAW
+            if action == "Withdraw" and qty > current_qty:
+                st.error(f"Cannot withdraw more than available ({current_qty})")
+                st.stop()
+        
             change = -qty if action == "Withdraw" else qty
-
+        
             append_equipment_stock(equipment, item, change, uom)
-
-            log_transaction(action, item, qty, person, mdr, equipment, uom)
-
+        
+            log_transaction(
+                action,
+                item,
+                qty,
+                person,
+                mdr,
+                equipment,
+                uom
+            )
+        
             st.success("Transaction recorded")
             st.rerun()
-
+    
 # =========================
 # TRANSACTIONS
 # =========================
