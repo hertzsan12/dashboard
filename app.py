@@ -110,7 +110,7 @@ def read_inventory():
     return inventory, uoms
 
 # =========================
-# GET ALL ITEMS (FOR SUGGESTION)
+# GET ALL ITEMS (SUGGESTION)
 # =========================
 def get_all_items():
     inventory, _ = read_inventory()
@@ -221,18 +221,22 @@ elif choice == "Equipment":
 
         if st.button("Save Equipment Items", key=f"save_items_{eq_name}"):
 
+            if st.session_state.get(f"saved_{eq_name}", False):
+                st.warning("Already saved. Please wait...")
+                st.stop()
+
+            st.session_state[f"saved_{eq_name}"] = True
+
             edited.columns = [str(col).strip().upper() for col in edited.columns]
 
             edited = edited.dropna(subset=["ITEM"])
             edited = edited[edited["ITEM"] != ""]
 
             updated_items = {}
-            all_items = get_all_items()
 
             for _, row in edited.iterrows():
                 item_input = normalize_item_name(row.get("ITEM"))
 
-                # 🔥 AUTO MATCH (PREVENT DUPLICATES)
                 matched_item = next(
                     (i for i in all_items if i.replace(" ", "") == item_input.replace(" ", "")),
                     item_input
@@ -248,6 +252,11 @@ elif choice == "Equipment":
 
             old_items = equipment_items.get(eq_name, {})
 
+            if updated_items == old_items:
+                st.info("No changes detected.")
+                st.session_state[f"saved_{eq_name}"] = False
+                st.stop()
+
             for item, data in old_items.items():
                 append_equipment_stock(eq_name, item, -data["qty"], data["uom"])
 
@@ -255,6 +264,8 @@ elif choice == "Equipment":
                 append_equipment_stock(eq_name, item, data["qty"], data["uom"])
 
             st.success("Updated successfully")
+
+            st.session_state[f"saved_{eq_name}"] = False
             st.rerun()
 
 # =========================
@@ -278,12 +289,6 @@ elif choice == "Withdraw/Deliver":
 
         st.write(f"Total Stock: {total_qty} {uom}")
         st.write(f"Equipment Stock: {current_qty} {uom}")
-
-        if current_qty == 0:
-            if total_qty > 0:
-                st.warning("Withdraw from other equipment")
-            else:
-                st.error("Follow up purchase")
 
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Quantity", min_value=0)
