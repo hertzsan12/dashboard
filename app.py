@@ -7,11 +7,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
-KILL_QTY = -999999  # 🔥 kill signal
+KILL_QTY = -999999
 
 # =========================
-# NORMALIZE ITEM
+# HELPERS
 # =========================
+def safe_int(value):
+    try:
+        return int(value)
+    except:
+        return 0
+
 def normalize_item_name(name):
     if not name:
         return ""
@@ -36,9 +42,6 @@ def connect_gsheet():
     )
     return gspread.authorize(creds)
 
-# =========================
-# SAFE READ
-# =========================
 def safe_read(sheet):
     for _ in range(3):
         try:
@@ -60,6 +63,7 @@ def append_equipment_stock(equipment, item, qty, uom="pcs"):
 # =========================
 # READ EQUIPMENT
 # =========================
+@st.cache_data(ttl=30)
 def read_equipment_items():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
@@ -67,30 +71,19 @@ def read_equipment_items():
     df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
 
-    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
-
-        try:
-            qty = int(row.get("Qty", 0))
-        except:
-            qty = 0
+        qty = safe_int(row.get("Qty"))
 
         if qty <= KILL_QTY:
             killed_items.add((eq, item))
 
-    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
-
-        try:
-            qty = int(row.get("Qty", 0))
-        except:
-            qty = 0
-
+        qty = safe_int(row.get("Qty"))
         uom = row.get("UOM", "pcs")
 
         if not eq or not item:
@@ -107,7 +100,6 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
-    # remove only negative garbage
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] < 0:
@@ -118,6 +110,7 @@ def read_equipment_items():
 # =========================
 # READ INVENTORY
 # =========================
+@st.cache_data(ttl=30)
 def read_inventory():
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
@@ -127,28 +120,17 @@ def read_inventory():
     inventory = {}
     uoms = {}
 
-    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
-
-        try:
-            qty = int(row.get("Qty", 0))
-        except:
-            qty = 0
+        qty = safe_int(row.get("Qty"))
 
         if qty <= KILL_QTY:
             killed_items.add(item)
 
-    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
-
-        try:
-            qty = int(row.get("Qty", 0))
-        except:
-            qty = 0
-
+        qty = safe_int(row.get("Qty"))
         uom = row.get("UOM", "pcs")
 
         if not item:
@@ -160,7 +142,6 @@ def read_inventory():
         inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
-    # keep zero
     for item in list(inventory.keys()):
         if inventory[item] < 0:
             del inventory[item]
@@ -199,30 +180,50 @@ choice = st.sidebar.radio("Go to", menu)
 # INVENTORY
 # =========================
 if choice == "Inventory":
-    st.title("Inventory Overview")
+    st.title("📦 Inventory Overview")
 
     inventory, uoms = read_inventory()
+
+    col1, col2, col3 = st.columns(3)
+    total_items = len(inventory)
+    no_stock = sum(1 for q in inventory.values() if q == 0)
+    low_stock = sum(1 for q in inventory.values() if 0 < q <= LOW_STOCK_THRESHOLD)
+
+    col1.metric("Total Items", total_items)
+    col2.metric("No Stock", no_stock)
+    col3.metric("Low Stock", low_stock)
+
+    search = st.text_input("🔍 Search Item")
 
     data = []
     for item in inventory:
         qty = inventory[item]
         uom = uoms.get(item, "pcs")
 
-        status = "🟢 OK"
         if qty == 0:
             status = "🔴 No Stock"
         elif qty <= LOW_STOCK_THRESHOLD:
             status = "🟡 Low Stock"
+        elif qty <= LOW_STOCK_THRESHOLD * 2:
+            status = "🟢 Healthy"
+        else:
+            status = "🔵 Overstock"
 
         data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
-    st.dataframe(pd.DataFrame(data))
+    df = pd.DataFrame(data)
+
+    if search:
+        df = df[df["Item"].str.contains(search.upper())]
+
+    df = df.sort_values(by="Quantity")
+    st.dataframe(df, use_container_width=True)
 
 # =========================
 # EQUIPMENT
 # =========================
 elif choice == "Equipment":
-    st.title("Equipment Inventory")
+    st.title("🛠 Equipment Inventory")
 
     equipment_items = read_equipment_items()
     equipment_list = sorted(equipment_items.keys())
@@ -244,8 +245,7 @@ elif choice == "Equipment":
 
         edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
 
-        if st.button("Save Equipment Items"):
-
+        if st.button("💾 Save Changes"):
             old_items = equipment_items.get(eq_name, {})
             processed_items = set()
 
@@ -254,7 +254,7 @@ elif choice == "Equipment":
                 if not new_item:
                     continue
 
-                new_qty = int(row.get("Quantity", 0))
+                new_qty = safe_int(row.get("Quantity"))
                 uom = row.get("UOM", "pcs")
 
                 matched_old = None
@@ -288,7 +288,7 @@ elif choice == "Equipment":
 # WITHDRAW / DELIVER
 # =========================
 elif choice == "Withdraw/Deliver":
-    st.title("Withdraw / Deliver")
+    st.title("🔄 Withdraw / Deliver")
 
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
@@ -311,49 +311,43 @@ elif choice == "Withdraw/Deliver":
 
         if current_qty == 0:
             if total_qty > 0:
-                st.warning("Withdraw Stocks from other Equipment")
+                st.warning("⚠️ Available in other equipment")
             else:
-                st.error("Follow up Purchase / MR")
+                st.error("🚨 OUT OF STOCK — Purchase needed")
+        elif current_qty <= LOW_STOCK_THRESHOLD:
+            st.warning("⚠️ Low stock")
 
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Qty", min_value=0)
-        person = st.text_input("Person")
+        person = st.text_input("Person").upper()
         mdr = st.text_input("MDR") if action == "Deliver" else ""
 
         confirm = st.checkbox("✅ Confirm Transaction")
 
-        if st.session_state.submitted:
-            st.success("✅ Transaction already completed")
-            if st.button("🔄 New Transaction"):
-                st.session_state.submitted = False
+        if st.button("🚀 Submit Transaction"):
+
+            if not confirm:
+                st.warning("⚠️ Please confirm")
+            elif qty <= 0:
+                st.warning("⚠️ Enter valid quantity")
+            elif not person:
+                st.warning("⚠️ Enter person name")
+            elif action == "Withdraw" and qty > current_qty:
+                st.error("❌ Not enough stock")
+            else:
+                change = -qty if action == "Withdraw" else qty
+
+                append_equipment_stock(equipment, item, change, uom)
+                log_transaction(action, item, qty, person, mdr, equipment, uom)
+
+                st.success(f"✅ {action} completed")
                 st.rerun()
-
-        else:
-            if st.button("Submit"):
-
-                if not confirm:
-                    st.warning("⚠️ Please confirm the transaction first")
-                elif qty <= 0:
-                    st.warning("⚠️ Enter valid quantity")
-                elif not person:
-                    st.warning("⚠️ Enter person name")
-                else:
-                    change = -qty if action == "Withdraw" else qty
-
-                    append_equipment_stock(equipment, item, change, uom)
-                    log_transaction(action, item, qty, person, mdr, equipment, uom)
-
-                    st.session_state.submitted = True
-
-                    st.success(f"✅ {action} completed by {person}")
-                    st.info("🔒 Transaction locked to prevent duplicate entry")
-                    st.rerun()
 
 # =========================
 # TRANSACTIONS
 # =========================
 elif choice == "Transactions":
-    st.title("Transactions")
+    st.title("📜 Transactions")
 
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
@@ -364,27 +358,13 @@ elif choice == "Transactions":
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df.sort_values(by="Timestamp", ascending=False)
 
-        st.dataframe(df)
+        person_filter = st.text_input("Filter by Person")
+        item_filter = st.text_input("Filter by Item")
 
-        if st.button("Undo Last"):
-            last = df.iloc[0]
+        if person_filter:
+            df = df[df["Person"].str.contains(person_filter, case=False)]
 
-            append_equipment_stock(
-                last["Equipment"],
-                last["Item"],
-                -int(last["Qty"]),
-                last["UOM"]
-            )
+        if item_filter:
+            df = df[df["Item"].str.contains(item_filter, case=False)]
 
-            log_transaction(
-                "Canceled",
-                last["Item"],
-                abs(int(last["Qty"])),
-                last["Person"],
-                "Canceled",
-                last["Equipment"],
-                last["UOM"]
-            )
-
-            st.success("Transaction canceled")
-            st.rerun()
+        st.dataframe(df, use_container_width=True)
