@@ -10,7 +10,7 @@ LOW_STOCK_THRESHOLD = 5
 KILL_QTY = -999999
 
 # =========================
-# NORMALIZE
+# NORMALIZE ITEM
 # =========================
 def normalize_item_name(name):
     if not name:
@@ -24,7 +24,7 @@ def clean_compare(name):
     return normalize_item_name(name).replace(",", "").replace(" ", "")
 
 # =========================
-# GSHEET
+# CONNECT GSHEET
 # =========================
 def connect_gsheet():
     scope = [
@@ -36,6 +36,9 @@ def connect_gsheet():
     )
     return gspread.authorize(creds)
 
+# =========================
+# SAFE READ
+# =========================
 def safe_read(sheet):
     for _ in range(3):
         try:
@@ -44,6 +47,9 @@ def safe_read(sheet):
             time.sleep(1)
     return []
 
+# =========================
+# APPEND STOCK
+# =========================
 def append_equipment_stock(equipment, item, qty, uom="pcs"):
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("equipment_stock")
@@ -83,6 +89,11 @@ def read_equipment_items():
         equipment_dict[eq].setdefault(item, {"qty": 0, "uom": uom})
         equipment_dict[eq][item]["qty"] += qty
 
+    for eq in list(equipment_dict.keys()):
+        for item in list(equipment_dict[eq].keys()):
+            if equipment_dict[eq][item]["qty"] < 0:
+                del equipment_dict[eq][item]
+
     return equipment_dict
 
 # =========================
@@ -113,10 +124,14 @@ def read_inventory():
         inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
+    for item in list(inventory.keys()):
+        if inventory[item] < 0:
+            del inventory[item]
+
     return inventory, uoms
 
 # =========================
-# LOG
+# LOG TRANSACTION
 # =========================
 def log_transaction(action, item, qty, person, mdr, equipment, uom):
     client = connect_gsheet()
@@ -130,33 +145,55 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
     ])
 
 # =========================
-# UI
+# UI + SIDEBAR
 # =========================
 st.set_page_config(layout="wide")
+
+st.sidebar.title("📊 David Hertz Monitoring")
+st.sidebar.caption("Inventory • Equipment • Tracking")
+st.sidebar.markdown("---")
+
+user_name = st.sidebar.text_input("👤 Current User", value="Operator")
+
+now = datetime.datetime.now()
+st.sidebar.markdown(f"📅 **Date:** {now.strftime('%Y-%m-%d')}")
+st.sidebar.markdown(f"⏰ **Time:** {now.strftime('%H:%M:%S')}")
+
+st.sidebar.markdown("---")
+
+try:
+    inventory, _ = read_inventory()
+    low_stock_count = len([i for i in inventory if inventory[i] <= LOW_STOCK_THRESHOLD])
+except:
+    low_stock_count = 0
+
+st.sidebar.metric("⚠️ Low Stock Items", low_stock_count)
+
+st.sidebar.markdown("---")
+
 menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
 choice = st.sidebar.radio("Go to", menu)
 
 # =========================
-# INVENTORY + DASHBOARD
+# INVENTORY
 # =========================
 if choice == "Inventory":
-    st.title("📦 Inventory Dashboard")
+    st.title("Inventory Overview")
 
     inventory, uoms = read_inventory()
 
     data = []
     for item in inventory:
         qty = inventory[item]
-        status = "🟢 OK" if qty > LOW_STOCK_THRESHOLD else "🟡 Low"
-        data.append({"Item": item, "Qty": qty, "Status": status})
+        uom = uoms.get(item, "pcs")
 
-    df = pd.DataFrame(data)
+        status = "🟢 OK"
+        if qty <= LOW_STOCK_THRESHOLD:
+            status = "🟡 Low Stock"
 
-    col1, col2 = st.columns(2)
-    col1.metric("Total Items", len(df))
-    col2.metric("Low Stock", len(df[df["Qty"] <= LOW_STOCK_THRESHOLD]))
+        data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
-    st.dataframe(df)
+    st.dataframe(pd.DataFrame(data))
 
 # =========================
 # EQUIPMENT
@@ -165,10 +202,12 @@ elif choice == "Equipment":
     st.title("Equipment Inventory")
 
     equipment_items = read_equipment_items()
-    eq_name = st.selectbox("Equipment", ["-- New --"] + list(equipment_items.keys()))
+    equipment_list = sorted(equipment_items.keys())
+
+    eq_name = st.selectbox("Equipment", ["-- New --"] + equipment_list, key="eq_select")
 
     if eq_name == "-- New --":
-        eq_name = st.text_input("New Equipment Name")
+        eq_name = st.text_input("New Equipment Name", key="new_eq_name")
 
     if eq_name:
         items = equipment_items.get(eq_name, {})
@@ -178,59 +217,63 @@ elif choice == "Equipment":
             for k, v in items.items()
         ])
 
-        edited = st.data_editor(df, num_rows="dynamic")
+        df = pd.concat([df, pd.DataFrame([{"Item":"", "Quantity":0, "UOM":"pcs"}])])
+        edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
 
-        if st.button("Save"):
-            old_items = items
-            processed = set()
+        if st.button("Save Equipment Items"):
+            old_items = equipment_items.get(eq_name, {})
+            processed_items = set()
 
             for _, row in edited.iterrows():
-                new_item = normalize_item_name(row["Item"])
-                if not new_item: continue
+                new_item = normalize_item_name(row.get("Item"))
+                if not new_item:
+                    continue
 
-                new_qty = int(row["Quantity"])
-                uom = row["UOM"]
+                new_qty = int(row.get("Quantity", 0))
+                uom = row.get("UOM", "pcs")
 
-                matched = None
-                for old in old_items:
-                    if clean_compare(old) == clean_compare(new_item):
-                        matched = old
+                matched_old = None
+                for old_item in old_items:
+                    if clean_compare(old_item) == clean_compare(new_item):
+                        matched_old = old_item
+                        break
 
-                old_qty = old_items.get(matched, {}).get("qty", 0)
+                old_qty = old_items.get(matched_old, {}).get("qty", 0) if matched_old else 0
 
-                if matched and matched != new_item:
-                    append_equipment_stock(eq_name, matched, -old_qty, uom)
-                    append_equipment_stock(eq_name, matched, KILL_QTY, uom)
+                if matched_old and matched_old != new_item:
+                    append_equipment_stock(eq_name, matched_old, -old_qty, uom)
+                    append_equipment_stock(eq_name, matched_old, KILL_QTY, uom)
 
                 diff = new_qty - old_qty
+
                 if diff != 0:
                     append_equipment_stock(eq_name, new_item, diff, uom)
 
-                processed.add(new_item)
+                processed_items.add(new_item)
 
-            for old, data in old_items.items():
-                if old not in processed:
-                    append_equipment_stock(eq_name, old, -data["qty"], data["uom"])
-                    append_equipment_stock(eq_name, old, KILL_QTY, data["uom"])
+            for old_item, data in old_items.items():
+                if old_item not in processed_items:
+                    append_equipment_stock(eq_name, old_item, -data["qty"], data["uom"])
+                    append_equipment_stock(eq_name, old_item, KILL_QTY, data["uom"])
 
-            st.success("Saved")
+            st.success("Saved successfully")
             st.rerun()
 
 # =========================
-# WITHDRAW / DELIVER / TRANSFER
+# WITHDRAW / DELIVER
 # =========================
 elif choice == "Withdraw/Deliver":
-    st.title("Transactions")
+    st.title("Withdraw / Deliver")
 
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
 
     equipment_items = read_equipment_items()
-    equipment = st.selectbox("From Equipment", list(equipment_items.keys()))
+    equipment = st.selectbox("Equipment", list(equipment_items.keys()))
 
     if equipment:
         items = equipment_items[equipment]
-        item = st.selectbox("Item", list(items.keys()))
+        item = st.selectbox("Item", list(items.keys()), key="item_select")
 
         current_qty = items[item]["qty"]
         uom = items[item]["uom"]
@@ -238,67 +281,51 @@ elif choice == "Withdraw/Deliver":
         inventory, _ = read_inventory()
         total_qty = inventory.get(item, 0)
 
-        st.write(f"Total: {total_qty} | Equipment: {current_qty}")
+        st.write(f"Total Stock: {total_qty} {uom}")
+        st.write(f"Equipment Stock: {current_qty} {uom}")
 
-        action = st.radio("Action", ["Withdraw", "Deliver", "Transfer"])
-        qty = st.number_input("Qty", min_value=0)
-        person = st.text_input("Person")
+        action = st.radio("Action", ["Withdraw", "Deliver"])
+        qty = st.number_input("Qty", min_value=0, key="qty_input")
+        person = st.text_input("Person", key="person_input")
 
-        if action == "Transfer":
-            target = st.selectbox("To Equipment", [e for e in equipment_items if e != equipment])
-
-        confirm = st.checkbox("Confirm")
+        confirm = st.checkbox("Confirm Transaction")
 
         if st.session_state.submitted:
-            st.success("Done")
-            if st.button("New"):
+            st.success("Transaction completed")
+
+            if st.button("New Transaction"):
                 st.session_state.submitted = False
+                st.session_state.pop("item_select", None)
+                st.session_state.pop("qty_input", None)
+                st.session_state.pop("person_input", None)
                 st.rerun()
 
         else:
             if st.button("Submit"):
 
                 if not confirm:
-                    st.warning("Confirm first")
-                    st.stop()
-
-                if qty <= 0:
-                    st.warning("Invalid qty")
-                    st.stop()
-
-                if not person:
-                    st.warning("Enter name")
-                    st.stop()
-
-                if action == "Withdraw" and qty > current_qty:
+                    st.warning("Please confirm transaction")
+                elif qty <= 0:
+                    st.warning("Enter valid quantity")
+                elif not person:
+                    st.warning("Enter person name")
+                elif action == "Withdraw" and qty > current_qty:
                     st.error("Not enough stock")
-                    st.stop()
-
-                if action == "Transfer":
-                    append_equipment_stock(equipment, item, -qty, uom)
-                    append_equipment_stock(target, item, qty, uom)
-
-                    log_transaction("Transfer OUT", item, qty, person, "", equipment, uom)
-                    log_transaction("Transfer IN", item, qty, person, "", target, uom)
-
                 else:
                     change = -qty if action == "Withdraw" else qty
+
                     append_equipment_stock(equipment, item, change, uom)
                     log_transaction(action, item, qty, person, "", equipment, uom)
 
-                st.session_state.submitted = True
-
-                st.success(f"{action} done by {person}")
-                st.markdown("### Receipt")
-                st.write(item, qty, equipment)
-
-                st.rerun()
+                    st.session_state.submitted = True
+                    st.success(f"{action} completed by {person}")
+                    st.rerun()
 
 # =========================
 # TRANSACTIONS
 # =========================
 elif choice == "Transactions":
-    st.title("Logs")
+    st.title("Transactions")
 
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
@@ -311,6 +338,25 @@ elif choice == "Transactions":
 
         st.dataframe(df)
 
-        st.subheader("Top Used Items")
-        top = df.groupby("Item")["Qty"].sum().abs().sort_values(ascending=False).head(10)
-        st.bar_chart(top)
+        if st.button("Undo Last"):
+            last = df.iloc[0]
+
+            append_equipment_stock(
+                last["Equipment"],
+                last["Item"],
+                -int(last["Qty"]),
+                last["UOM"]
+            )
+
+            log_transaction(
+                "Canceled",
+                last["Item"],
+                abs(int(last["Qty"])),
+                last["Person"],
+                "Canceled",
+                last["Equipment"],
+                last["UOM"]
+            )
+
+            st.success("Transaction canceled")
+            st.rerun()
