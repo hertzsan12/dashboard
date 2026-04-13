@@ -209,7 +209,9 @@ if choice == "Inventory":
         uom = uoms.get(item, "pcs")
 
         status = "🟢 OK"
-        if qty <= LOW_STOCK_THRESHOLD:
+        if qty == 0:
+            status = "🔴 No Stock"
+        elif qty <= LOW_STOCK_THRESHOLD:
             status = "🟡 Low Stock"
 
         data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
