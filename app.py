@@ -67,20 +67,25 @@ def read_equipment_items():
     df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
 
+    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
+
         try:
             qty = int(row.get("Qty", 0))
         except:
             qty = 0
+
         if qty <= KILL_QTY:
             killed_items.add((eq, item))
 
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
+
         try:
             qty = int(row.get("Qty", 0))
         except:
@@ -90,6 +95,7 @@ def read_equipment_items():
 
         if not eq or not item:
             continue
+
         if (eq, item) in killed_items:
             continue
 
@@ -101,6 +107,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
+    # remove only negative garbage
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] < 0:
@@ -120,18 +127,23 @@ def read_inventory():
     inventory = {}
     uoms = {}
 
+    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
+
         try:
             qty = int(row.get("Qty", 0))
         except:
             qty = 0
+
         if qty <= KILL_QTY:
             killed_items.add(item)
 
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
+
         try:
             qty = int(row.get("Qty", 0))
         except:
@@ -141,12 +153,14 @@ def read_inventory():
 
         if not item:
             continue
+
         if item in killed_items:
             continue
 
         inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
+    # keep zero
     for item in list(inventory.keys()):
         if inventory[item] < 0:
             del inventory[item]
@@ -175,32 +189,9 @@ def log_transaction(action, item, qty, person, mdr, equipment, uom):
     ])
 
 # =========================
-# UI + SIDEBAR (SAFE)
+# UI
 # =========================
 st.set_page_config(layout="wide")
-
-st.sidebar.title("📊 David Hertz Monitoring")
-st.sidebar.caption("Inventory • Equipment • Tracking")
-st.sidebar.markdown("---")
-
-user_name = st.sidebar.text_input("👤 Current User", value="Operator")
-
-now = datetime.datetime.now()
-st.sidebar.markdown(f"📅 **Date:** {now.strftime('%Y-%m-%d')}")
-st.sidebar.markdown(f"⏰ **Time:** {now.strftime('%H:%M:%S')}")
-
-st.sidebar.markdown("---")
-
-try:
-    inv_preview, _ = read_inventory()
-    low_stock_count = len([i for i in inv_preview if inv_preview[i] <= LOW_STOCK_THRESHOLD])
-except:
-    low_stock_count = 0
-
-st.sidebar.metric("⚠️ Low Stock Items", low_stock_count)
-
-st.sidebar.markdown("---")
-
 menu = ["Inventory", "Equipment", "Withdraw/Deliver", "Transactions"]
 choice = st.sidebar.radio("Go to", menu)
 
@@ -217,29 +208,16 @@ if choice == "Inventory":
         qty = inventory[item]
         uom = uoms.get(item, "pcs")
 
-        # ✅ FIXED STATUS LOGIC
-        if qty == 0:
-            status = "🔴 No Stock"
-        elif qty <= LOW_STOCK_THRESHOLD:
+        status = "🟢 OK"
+        if qty <= LOW_STOCK_THRESHOLD:
             status = "🟡 Low Stock"
-        else:
-            status = "🟢 OK"
 
         data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
-    df_display = pd.DataFrame(data)
-
-    def highlight(row):
-        if row["Quantity"] == 0:
-            return ["background-color: #f8d7da"] * len(row)
-        elif row["Quantity"] <= LOW_STOCK_THRESHOLD:
-            return ["background-color: #fff3cd"] * len(row)
-        return [""] * len(row)
-
-    st.dataframe(df_display.style.apply(highlight, axis=1))
+    st.dataframe(pd.DataFrame(data))
 
 # =========================
-# EQUIPMENT (UNCHANGED)
+# EQUIPMENT
 # =========================
 elif choice == "Equipment":
     st.title("Equipment Inventory")
@@ -305,7 +283,7 @@ elif choice == "Equipment":
             st.rerun()
 
 # =========================
-# WITHDRAW / DELIVER (UNCHANGED)
+# WITHDRAW / DELIVER
 # =========================
 elif choice == "Withdraw/Deliver":
     st.title("Withdraw / Deliver")
@@ -331,9 +309,9 @@ elif choice == "Withdraw/Deliver":
 
         if current_qty == 0:
             if total_qty > 0:
-                st.warning("⚠️ No stock in this equipment. Available elsewhere.")
+                st.warning("Withdraw Stocks from other Equipment")
             else:
-                st.error("❌ No stock in system. Follow up Purchase / MR")
+                st.error("Follow up Purchase / MR")
 
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Qty", min_value=0)
@@ -370,7 +348,7 @@ elif choice == "Withdraw/Deliver":
                     st.rerun()
 
 # =========================
-# TRANSACTIONS (UNCHANGED)
+# TRANSACTIONS
 # =========================
 elif choice == "Transactions":
     st.title("Transactions")
