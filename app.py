@@ -211,13 +211,13 @@ if choice == "Inventory":
         status = "🟢 OK"
 
 if qty == 0:
-	status = "🔴 No Stock"
-     elif qty <= LOW_STOCK_THRESHOLD:
-         status = "🟡 Low Stock"
+		status = "🔴 No Stock"
+     	elif qty <= LOW_STOCK_THRESHOLD:
+         	status = "🟡 Low Stock"
 
-    data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
+    	data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
-st.dataframe(pd.DataFrame(data))
+	st.dataframe(pd.DataFrame(data))
 
 # =========================
 # EQUIPMENT
