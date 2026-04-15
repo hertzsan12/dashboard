@@ -212,8 +212,8 @@ if choice == "Inventory":
 
 if qty == 0:
 		status = "🔴 No Stock"
-     	elif qty <= LOW_STOCK_THRESHOLD:
-         	status = "🟡 Low Stock"
+elif qty <= LOW_STOCK_THRESHOLD:
+        status = "🟡 Low Stock"
 
     	data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
