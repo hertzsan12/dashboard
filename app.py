@@ -7,7 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = "1Z-DPnZlZqZsAGWdAT8S-a2RUN9tqR0rnOMs3519VbBg"
 LOW_STOCK_THRESHOLD = 5
-KILL_QTY = -999999
+KILL_QTY = -999999  # 🔥 kill signal
 
 # =========================
 # NORMALIZE ITEM
@@ -67,6 +67,7 @@ def read_equipment_items():
     df = pd.DataFrame(safe_read(sheet))
     equipment_dict = {}
 
+    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         eq = row.get("Equipment")
@@ -80,6 +81,7 @@ def read_equipment_items():
         if qty <= KILL_QTY:
             killed_items.add((eq, item))
 
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         eq = row.get("Equipment")
         item = normalize_item_name(row.get("Item"))
@@ -105,6 +107,7 @@ def read_equipment_items():
 
         equipment_dict[eq][item]["qty"] += qty
 
+    # remove only negative garbage
     for eq in list(equipment_dict.keys()):
         for item in list(equipment_dict[eq].keys()):
             if equipment_dict[eq][item]["qty"] < 0:
@@ -124,6 +127,7 @@ def read_inventory():
     inventory = {}
     uoms = {}
 
+    # 🔥 STEP 1: detect killed first
     killed_items = set()
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
@@ -136,6 +140,7 @@ def read_inventory():
         if qty <= KILL_QTY:
             killed_items.add(item)
 
+    # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
         item = normalize_item_name(row.get("Item"))
 
@@ -155,6 +160,7 @@ def read_inventory():
         inventory[item] = inventory.get(item, 0) + qty
         uoms[item] = uom
 
+    # keep zero
     for item in list(inventory.keys()):
         if inventory[item] < 0:
             del inventory[item]
@@ -193,48 +199,31 @@ choice = st.sidebar.radio("Go to", menu)
 # INVENTORY
 # =========================
 if choice == "Inventory":
-    st.title("📦 Inventory Overview")
+    st.title("Inventory Overview")
 
     inventory, uoms = read_inventory()
-
-    # ✅ KPI (SAFE)
-    col1, col2, col3 = st.columns(3)
-    total_items = len(inventory)
-    no_stock = sum(1 for q in inventory.values() if q == 0)
-    low_stock = sum(1 for q in inventory.values() if 0 < q <= LOW_STOCK_THRESHOLD)
-
-    col1.metric("Total Items", total_items)
-    col2.metric("No Stock", no_stock)
-    col3.metric("Low Stock", low_stock)
-
-    search = st.text_input("🔍 Search Item")
 
     data = []
     for item in inventory:
         qty = inventory[item]
         uom = uoms.get(item, "pcs")
 
-        # ✅ ONLY STATUS IMPROVED (SAFE)
         status = "🟢 OK"
-        if qty == 0:
-            status = "🔴 No Stock"
+
+	if qty == 0:
+	    status = "🔴 No Stock"
         elif qty <= LOW_STOCK_THRESHOLD:
             status = "🟡 Low Stock"
 
         data.append({"Item": item, "Quantity": qty, "UOM": uom, "Status": status})
 
-    df = pd.DataFrame(data)
-
-    if search:
-        df = df[df["Item"].str.contains(search.upper())]
-
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(pd.DataFrame(data))
 
 # =========================
 # EQUIPMENT
 # =========================
 elif choice == "Equipment":
-    st.title("🛠 Equipment Inventory")
+    st.title("Equipment Inventory")
 
     equipment_items = read_equipment_items()
     equipment_list = sorted(equipment_items.keys())
@@ -256,7 +245,8 @@ elif choice == "Equipment":
 
         edited = st.data_editor(df, key=f"edit_{eq_name}", num_rows="dynamic")
 
-        if st.button("💾 Save Equipment Items"):
+        if st.button("Save Equipment Items"):
+
             old_items = equipment_items.get(eq_name, {})
             processed_items = set()
 
@@ -299,7 +289,7 @@ elif choice == "Equipment":
 # WITHDRAW / DELIVER
 # =========================
 elif choice == "Withdraw/Deliver":
-    st.title("🔄 Withdraw / Deliver")
+    st.title("Withdraw / Deliver")
 
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
@@ -320,12 +310,11 @@ elif choice == "Withdraw/Deliver":
         st.write(f"Total Stock: {total_qty} {uom}")
         st.write(f"Equipment Stock: {current_qty} {uom}")
 
-        # ✅ SAME LOGIC, JUST UI TEXT
         if current_qty == 0:
             if total_qty > 0:
-                st.warning("⚠️ Withdraw Stocks from other Equipment")
+                st.warning("Withdraw Stocks from other Equipment")
             else:
-                st.error("🚨 Follow up Purchase / MR")
+                st.error("Follow up Purchase / MR")
 
         action = st.radio("Action", ["Withdraw", "Deliver"])
         qty = st.number_input("Qty", min_value=0)
@@ -341,7 +330,7 @@ elif choice == "Withdraw/Deliver":
                 st.rerun()
 
         else:
-            if st.button("🚀 Submit"):
+            if st.button("Submit"):
 
                 if not confirm:
                     st.warning("⚠️ Please confirm the transaction first")
@@ -365,7 +354,7 @@ elif choice == "Withdraw/Deliver":
 # TRANSACTIONS
 # =========================
 elif choice == "Transactions":
-    st.title("📜 Transactions")
+    st.title("Transactions")
 
     client = connect_gsheet()
     sheet = client.open_by_key(SHEET_ID).worksheet("transactions_log")
@@ -376,19 +365,8 @@ elif choice == "Transactions":
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df.sort_values(by="Timestamp", ascending=False)
 
-        # ✅ SAFE FILTER ONLY
-        person_filter = st.text_input("Filter by Person")
-        item_filter = st.text_input("Filter by Item")
+        st.dataframe(df)
 
-        if person_filter:
-            df = df[df["Person"].astype(str).str.contains(person_filter, case=False)]
-
-        if item_filter:
-            df = df[df["Item"].astype(str).str.contains(item_filter, case=False)]
-
-        st.dataframe(df, use_container_width=True)
-
-        # ✅ ORIGINAL UNDO (UNCHANGED)
         if st.button("Undo Last"):
             last = df.iloc[0]
 
