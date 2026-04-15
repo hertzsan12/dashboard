@@ -138,7 +138,7 @@ def read_inventory():
             qty = 0
 
         if qty <= KILL_QTY:
-            killed_items.add(item)
+            killed_items.add((row.get("Equipment"), item))
 
     # 🔥 STEP 2: process active only
     for _, row in df.iterrows():
@@ -154,7 +154,7 @@ def read_inventory():
         if not item:
             continue
 
-        if item in killed_items:
+        if (row.get("Equipment"), item) in killed_items:
             continue
 
         inventory[item] = inventory.get(item, 0) + qty
